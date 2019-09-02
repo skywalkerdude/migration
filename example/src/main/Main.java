@@ -41,6 +41,55 @@ public final class Main {
     private static Map<HymnalDbKey, ConvertedHymn> hymnalDbHymns = new HashMap<>();
     private static Map<H4aKey, ConvertedHymn> h4aHymns = new HashMap<>();
 
+    private static Set<Set<HymnalDbKey>> hymnalDbExceptions = new HashSet<>();
+    static {
+        // This mapping, even though it has two classic hymns, is correct.
+        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CLASSIC_HYMN, "1353", null),
+                                      new HymnalDbKey(HymnType.CLASSIC_HYMN, "8476", null)));
+
+        // This mapping is weird, but it's fine.
+        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CLASSIC_HYMN, "1360", null),
+                                      new HymnalDbKey(HymnType.CLASSIC_HYMN, "267", null)));
+
+        // This mapping, even though it has two classic hymns, is correct. They are basically the same song, only
+        // that E1359 has a chorus.
+        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CLASSIC_HYMN, "1359", null),
+                                      new HymnalDbKey(HymnType.CLASSIC_HYMN, "445", null)));
+
+        // This mapping, even though it has two classic hymns, is correct.
+        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CLASSIC_HYMN, "79", null),
+                                      new HymnalDbKey(HymnType.CLASSIC_HYMN, "8079", null)));
+
+        // This mapping, even though it has two classic hymns, is correct.
+        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CLASSIC_HYMN, "528", null),
+                                      new HymnalDbKey(HymnType.CLASSIC_HYMN, "8444", null)));
+
+        // This mapping, even though it has two classic hymns, is correct.
+        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CLASSIC_HYMN, "1358", null),
+                                      new HymnalDbKey(HymnType.CLASSIC_HYMN, "921", null)));
+
+        // This mapping, even though it has two classic hymns, is correct.
+        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CLASSIC_HYMN, "631", null),
+                                      new HymnalDbKey(HymnType.CLASSIC_HYMN, "481", null)));
+
+        // This mapping, even though it has two classic hymns, is correct.
+        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CLASSIC_HYMN, "720", null),
+                                      new HymnalDbKey(HymnType.CLASSIC_HYMN, "8526", null)));
+
+        // This mapping, even though it has two new songs, is correct.
+        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.NEW_SONG, "19", null),
+                                      new HymnalDbKey(HymnType.NEW_SONG, "474", null)));
+
+        // This mapping, even though it has two German songs, is correct.
+        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.GERMAN, "786", null),
+                                      new HymnalDbKey(HymnType.GERMAN, "786b", null)));
+
+        // This mapping, even though it has three Howard Higashi songs, is correct.
+        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.HOWARD_HIGASHI, "12", null),
+                                      new HymnalDbKey(HymnType.HOWARD_HIGASHI, "12f", null),
+                                      new HymnalDbKey(HymnType.HOWARD_HIGASHI, "12s", null)));
+    }
+
     private static String toJsonString(Object src) {
         return
             new GsonBuilder()
@@ -303,72 +352,10 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NU
                 }
             }
 
-            // This mapping, even though it has two classic hymns, is correct.
-            if (allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "1353", null))
-                && allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "8476", null))) {
-                continue;
-            }
-
-            // This mapping is weird, but it's fine.
-            if (allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "1360", null))
-                && allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "267", null))) {
-                continue;
-            }
-
-            // This mapping, even though it has two classic hymns, is correct. They are basically the same song, only
-            // that E1359 has a chorus.
-            if (allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "1359", null))
-                && allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "445", null))) {
-                continue;
-            }
-
-            // This mapping, even though it has two classic hymns, is correct.
-            if (allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "79", null))
-                && allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "8079", null))) {
-                continue;
-            }
-
-            // This mapping, even though it has two classic hymns, is correct.
-            if (allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "528", null))
-                && allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "8444", null))) {
-                continue;
-            }
-
-            // This mapping, even though it has two classic hymns, is correct.
-            if (allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "1358", null))
-                && allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "921", null))) {
-                continue;
-            }
-
-            // This mapping, even though it has two classic hymns, is correct.
-            if (allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "631", null))
-                && allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "481", null))) {
-                continue;
-            }
-
-            // This mapping, even though it has two classic hymns, is correct.
-            if (allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "720", null))
-                && allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "8526", null))) {
-                continue;
-            }
-
-            // This mapping, even though it has two new songs, is correct.
-            if (allRelevant.contains(new HymnalDbKey(HymnType.NEW_SONG, "19", null))
-                && allRelevant.contains(new HymnalDbKey(HymnType.NEW_SONG, "474", null))) {
-                continue;
-            }
-
-            // This mapping, even though it has two German songs, is correct.
-            if (allRelevant.contains(new HymnalDbKey(HymnType.GERMAN, "786", null))
-                && allRelevant.contains(new HymnalDbKey(HymnType.GERMAN, "786b", null))) {
-                continue;
-            }
-
-            // This mapping, even though it has three Howard Higashi songs, is correct.
-            if (allRelevant.contains(new HymnalDbKey(HymnType.HOWARD_HIGASHI, "12", null))
-                && allRelevant.contains(new HymnalDbKey(HymnType.HOWARD_HIGASHI, "12f", null))
-                && allRelevant.contains(new HymnalDbKey(HymnType.HOWARD_HIGASHI, "12s", null))) {
-                continue;
+            for (Set<HymnalDbKey> exception : hymnalDbExceptions) {
+                if (allRelevant.containsAll(exception)) {
+                    continue outerLoop;
+                }
             }
 
             if (Collections.frequency(relevantTypes, hymnType) > timesAllowed) {
