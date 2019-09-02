@@ -704,7 +704,6 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NU
 
         ConvertedHymn h4aHymn = h4aHymns.get(h4aKey);
         List<H4aKey> relevant = h4aHymn.languages;
-        // allRelevant.addAll(languages);
 
         // Look in hymnal db and remove all languages types that already exist in the hymnal db mapping. This is because
         // there are a lot of messed up mappings in h4a, and if they already exist in the hymnal db mapping, then we
@@ -715,7 +714,6 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NU
                 for (H4aKey hymnalDbRelevant : hymnalDbHymn.languages) {
                     if (hymnalDbRelevant.isSameType(h4aRelevant)) {
                         relevant.remove(h4aRelevant);
-                        // allRelevant.remove(h4aRelevant);
                     }
                 }
             }
@@ -727,7 +725,6 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NU
         for (H4aKey h4aRelevant : new ArrayList<>(relevant)) {
             if (h4aRelevant.type() == HymnType.BE_FILLED || h4aRelevant.type() == HymnType.UNKNOWN) {
                 relevant.remove(h4aRelevant);
-                // allRelevant.remove(h4aRelevant);
             }
         }
 
@@ -746,36 +743,30 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NU
 
             if (ignore.contains(relevantId.id)) {
                 relevant.remove(relevantId);
-                // allRelevant.remove(relevantId);
                 continue;
             } else if (relevantId.id.equals("C485") || relevantId.id.equals("NS6")) {
                 // Legitimate songs, but aren't actually related to anything. Therefore, they should be removed from
                 // other songs' "languages" mappings.
                 relevant.remove(relevantId);
-                // allRelevant.remove(relevantId);
                 continue;
             } else if (relevantId.id.equals("C426")) {
                 // C426 is a legitimate song, but its mapping in NS577 is wrong. It should be CS426. However, this is
                 // covered by the hymnal db, so we can safely ignore this.
                 relevant.remove(relevantId);
-                // allRelevant.remove(relevantId);
                 continue;
             } else if (relevantId.id.equals("C305")) {
                 // C305 is a legitimate song, but its mapping in BF84 is wrong. It should be CS305. However, this is
                 // covered by the hymnal db, so we can safely ignore this.
                 relevant.remove(relevantId);
-                // allRelevant.remove(relevantId);
                 continue;
             } else if (relevantId.type().equals(HymnType.TAGALOG) && Integer.parseInt(relevantId.number()) > 1360) {
                 // songs > T1360 are often times just repeats of their English counterpart or with small
                 // insignificant changes. Even when they're not repeats, they're not very useful songs. Therefore, we
                 // just ignore them.
                 relevant.remove(relevantId);
-                // allRelevant.remove(relevantId);
                 continue;
             } else if (relevantId.type().equals(HymnType.SPANISH_MISTYPED)) {
                 relevant.remove(relevantId);
-                // allRelevant.remove(relevantId);
                 relevantId = new H4aKey(HymnType.SPANISH, relevantId.number());
                 relevant.add(relevantId);
                 allRelevant.add(relevantId);
@@ -795,7 +786,6 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NU
                                 // Type in h4a is incorrect since it directly conflicts with the type found in the hymnal db
                                 // song.
                                 relevant.remove(relevantId);
-                                // allRelevant.remove(relevantId);
                                 continue outerLoop;
                             }
                         }
@@ -815,7 +805,6 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NU
                                 // Type in h4a is incorrect since it directly conflicts with the type found in the hymnal db
                                 // classic song.
                                 relevant.remove(relevantId);
-                                // allRelevant.remove(relevantId);
                                 continue outerLoop;
                             }
                         }
