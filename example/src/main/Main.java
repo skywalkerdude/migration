@@ -44,27 +44,10 @@ public final class Main {
     private static Set<Set<HymnalDbKey>> hymnalDbExceptions = new HashSet<>();
     static {
         // This mapping, even though it has two classic hymns, is correct.
-        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CLASSIC_HYMN, "1353", null),
-                                      new HymnalDbKey(HymnType.CLASSIC_HYMN, "8476", null)));
-
-        // This mapping is weird, but it's fine.
-        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CLASSIC_HYMN, "1360", null),
-                                      new HymnalDbKey(HymnType.CLASSIC_HYMN, "267", null)));
-
-        // This mapping, even though it has two classic hymns, is correct. They are basically the same song, only
-        // that E1359 has a chorus.
-        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CLASSIC_HYMN, "1359", null),
-                                      new HymnalDbKey(HymnType.CLASSIC_HYMN, "445", null)));
-
-        // This mapping, even though it has two classic hymns, is correct.
-        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CLASSIC_HYMN, "79", null),
-                                      new HymnalDbKey(HymnType.CLASSIC_HYMN, "8079", null)));
-
-        // This mapping, even though it has two classic hymns, is correct.
         hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CLASSIC_HYMN, "528", null),
                                       new HymnalDbKey(HymnType.CLASSIC_HYMN, "8444", null)));
 
-        // This mapping, even though it has two classic hymns, is correct.
+        // These two songs are related and thus can have different Chinese songs.
         hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CLASSIC_HYMN, "1358", null),
                                       new HymnalDbKey(HymnType.CLASSIC_HYMN, "921", null)));
 
@@ -88,6 +71,14 @@ public final class Main {
         hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.HOWARD_HIGASHI, "12", null),
                                       new HymnalDbKey(HymnType.HOWARD_HIGASHI, "12f", null),
                                       new HymnalDbKey(HymnType.HOWARD_HIGASHI, "12s", null)));
+
+        // Both these songs actually map to the same English song.
+        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CHINESE, "641", null),
+                                      new HymnalDbKey(HymnType.CHINESE_SUPPLEMENT, "917", null)));
+        hymnalDbExceptions.add(Set.of(new HymnalDbKey(HymnType.CHINESE, "641", "?gb=1"),
+                                      new HymnalDbKey(HymnType.CHINESE_SUPPLEMENT, "917", "?gb=1")));
+
+
     }
 
     private static String toJsonString(Object src) {
@@ -179,10 +170,17 @@ public final class Main {
         h4aHymns.get(new H4aKey("K664")).languages.remove(new H4aKey("E921"));
         h4aHymns.get(new H4aKey("K664")).languages.add(new H4aKey("E1358"));
 
-        // This song has messed up mapping in the h4a db: K217 should map to E1360, not E267.
-        // K217's parent hymn already points to E1360 and E1360 is already mapped to K217. So just a simple deletion is
-        // needed.
+        // These songs have messed up mappings in the h4a db: K217 and C217  should map to E1360, not E267.
+        // C217 and K217's parent hymn already points to E1360 and E1360 is already mapped to K217 and C217. So just a
+        // simple deletion is needed.
         h4aHymns.get(new H4aKey("E267")).languages.remove(new H4aKey("K217"));
+        h4aHymns.get(new H4aKey("E267")).languages.remove(new H4aKey("C217"));
+
+        // FR46 is the french version of E1360, not E267
+        h4aHymns.get(new H4aKey("FR46")).languages.remove(new H4aKey("E267"));
+        h4aHymns.get(new H4aKey("E267")).languages.remove(new H4aKey("FR46"));
+        h4aHymns.get(new H4aKey("FR46")).languages.add(new H4aKey("E1360"));
+        h4aHymns.get(new H4aKey("E1360")).languages.add(new H4aKey("FR46"));
 
         // This song has messed up mapping in the h4a db: E419's Korean song is K210 (already mapped), not K319.
         h4aHymns.get(new H4aKey("E419")).languages.remove(new H4aKey("K319"));
@@ -214,11 +212,17 @@ public final class Main {
         h4aHymns.get(new H4aKey("E605")).languages.remove(new H4aKey("K460"));
         h4aHymns.get(new H4aKey("K460")).languages.remove(new H4aKey("E605"));
 
-        // This song is a T song with number > 1360, but since it has a parent_hymn in the db, it fulfilled the
-        // "WHERE hymn_group='T' and parent_hymn is not null" clause. Nevertheless, it is just a two-verse version of
-        // E1134 and thus should be removed.
+        // T songs with number > 1360, but since it has a parent_hymn in the db, it fulfilled the
+        // "WHERE hymn_group='T' and parent_hymn is not null" clause. Nevertheless, these are mostly just duplicates
+        // of the english songs and thus should be removed.
         h4aHymns.remove(new H4aKey("T10122"));
         h4aHymns.get(new H4aKey("E1134")).languages.remove(new H4aKey("T10122"));
+        h4aHymns.remove(new H4aKey("T10810"));
+        h4aHymns.get(new H4aKey("E877")).languages.remove(new H4aKey("T10810"));
+        h4aHymns.remove(new H4aKey("T10735"));
+        h4aHymns.get(new H4aKey("E469")).languages.remove(new H4aKey("T10735"));
+        h4aHymns.remove(new H4aKey("T10218"));
+        h4aHymns.get(new H4aKey("E814")).languages.remove(new H4aKey("T10218"));
 
         // C390 should map to E517 (which it is), but it's somehow in the "languages" filed for E527. So it needs to be
         // removed.
@@ -236,6 +240,23 @@ public final class Main {
         // CS16 looks like it has the same tune as E1222, but the translation seems a bit different
         h4aHymns.get(new H4aKey("E1222")).languages.remove(new H4aKey("CS16"));
         h4aHymns.get(new H4aKey("CS16")).languages.remove(new H4aKey("E1222"));
+
+        // C68 and T79 are actually translations of the song h/8079 in hymnal db, while CB79 is the translation for E79.
+        // Therefore, they should have distinct mappings that should contain no overlap.
+        h4aHymns.get(new H4aKey("E79")).languages.remove(new H4aKey("C68"));
+        h4aHymns.get(new H4aKey("E79")).languages.remove(new H4aKey("T79"));
+        h4aHymns.get(new H4aKey("CB79")).languages.remove(new H4aKey("C68"));
+        h4aHymns.get(new H4aKey("CB79")).languages.remove(new H4aKey("T79"));
+
+        // E445 contains songs that actually should map to E1359. These songs are very similar, but distinct. Thus, we
+        // need to remove the duplicate mappings.
+        h4aHymns.get(new H4aKey("E445")).languages.remove(new H4aKey("C339"));
+        h4aHymns.get(new H4aKey("E445")).languages.remove(new H4aKey("K339"));
+        h4aHymns.get(new H4aKey("CB445")).languages.clear(); // nothing in here that isn't covered by hymnal db
+
+        // E480 maps to C357, but C357 is actually the translation to h/8357 (covered in hymnal db). So we can safely
+        // just remove the mapping here.
+        h4aHymns.get(new H4aKey("E480")).languages.remove(new H4aKey("C357"));
 
         for (H4aKey h4aKey : new HashSet<>(h4aHymns.keySet())) {
             populateH4aRelevant(h4aKey);
@@ -309,22 +330,70 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"v
 -- ch/643 and ch/643?gb=1 -> should only have each other as languages. The language mapping on hymnal.net is wrong. They don't actually match to h/1017 and its related songs
 UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)","path":"/en/hymn/ch/643?gb=1"}]}' WHERE HYMN_TYPE="ch" AND HYMN_NUMBER="643" and QUERY_PARAMS = "";
 UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"詩歌(繁)", "path":"/en/hymn/ch/643"}]}' WHERE HYMN_TYPE="ch" AND HYMN_NUMBER="643" and QUERY_PARAMS = "?gb=1";
--- ts/142 and ts/142?gb=1 ->  should only have each other as languages. The language mapping on hymnal.net is wrong. They don't actually match to h/1193 and its related songs
-UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)", "path":"/en/hymn/ts/142?gb=1"}]}' WHERE HYMN_TYPE="ts" AND HYMN_NUMBER="142" and QUERY_PARAMS = "";
-UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"詩歌(繁)", "path":"/en/hymn/ts/142"}]}' WHERE HYMN_TYPE="ts" AND HYMN_NUMBER="142" and QUERY_PARAMS = "?gb=1";
--- ts/253 and ts/253?gb=1 ->  should only have each other as languages. The language mapping on hymnal.net is wrong. They don't actually match to h/754 and its related songs
-UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)", "path":"/en/hymn/ts/253?gb=1"}]}' WHERE HYMN_TYPE="ts" AND HYMN_NUMBER="253" and QUERY_PARAMS = "";
-UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"詩歌(繁)", "path":"/en/hymn/ts/253"}]}' WHERE HYMN_TYPE="ts" AND HYMN_NUMBER="253" and QUERY_PARAMS = "?gb=1";
+-- ts/142 and ts/142?gb=1 -> mapped to h/1193 for some reason, but it actually is the chinese version of h/1198. So it should map to h/1198 and its related songs
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)", "path":"/en/hymn/ts/142?gb=1"}, {"value":"English", "path":"/en/hymn/h/1198"}, {"value":"Cebuano", "path":"/en/hymn/cb/1198"}]}' WHERE HYMN_TYPE="ts" AND HYMN_NUMBER="142" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"詩歌(繁)", "path":"/en/hymn/ts/142"}, {"value":"English", "path":"/en/hymn/h/1198"}, {"value":"Cebuano", "path":"/en/hymn/cb/1198"}]}' WHERE HYMN_TYPE="ts" AND HYMN_NUMBER="142" and QUERY_PARAMS = "?gb=1";
+-- ts/253 and ts/253?gb=1 -> mapped to h/754 for some reason, but it actually is the chinese version of h/1164. So it should map to h/1164 and its related songs
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)", "path":"/en/hymn/ts/253?gb=1"}, {"value":"English", "path":"/en/hymn/h/1164"}, {"value":"Cebuano", "path":"/en/hymn/cb/1164"}]}' WHERE HYMN_TYPE="ts" AND HYMN_NUMBER="253" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"詩歌(繁)", "path":"/en/hymn/ts/253"}, {"value":"English", "path":"/en/hymn/h/1164"}, {"value":"Cebuano", "path":"/en/hymn/cb/1164"}]}' WHERE HYMN_TYPE="ts" AND HYMN_NUMBER="253" and QUERY_PARAMS = "?gb=1";
 -- h/8438 -> set languages json to null. The language mapping on hymnal.net is wrong. They don't actually match to h/754 and its related songs ch/439 and its related songs
 UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYMN_NUMBER="8438";
 -- h/379 -> set languages json to null. The language mapping on hymnal.net is wrong. They don't actually match to ch/385 and its related songs ch/439 and its related songs
 UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYMN_NUMBER="379";
 -- h/1111 -> languages should link to ch/1111 instead of ch/8111. The language mapping on hymnal.net is wrong.
-UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)", "path":"/en/hymn/ch/1111?gb=1"},{"value":"詩歌(繁)","path":"/en/hymn/ch/1111"}]}' WHERE HYMN_TYPE="h" AND HYMN_NUMBER="1111";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)", "path":"/en/hymn/ch/1111?gb=1"}, {"value":"詩歌(繁)","path":"/en/hymn/ch/1111"}]}' WHERE HYMN_TYPE="h" AND HYMN_NUMBER="1111";
 -- Delete ch/8111 and ch/8111?gb=1 for above reason ^^
 DELETE FROM SONG_DATA WHERE HYMN_TYPE="ch" AND HYMN_NUMBER="8111";
--- hf/15 -> set languages json to null and copy over Author(null), Composer(null), Key(F Major), Time(3/4), Meter(8.8.8.8), Hymn Code(51712165172321), Scriptures (Song of Songs) from h/1084
-UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NULL, SONG_META_DATA_COMPOSER = NULL, SONG_META_DATA_KEY = "F Major", SONG_META_DATA_TIME = "3/4", SONG_META_DATA_METER = "8.8.8.8", SONG_META_DATA_HYMN_CODE = "51712165172321", SONG_META_DATA_SCRIPTURES = "Song of Songs" WHERE HYMN_TYPE="hf" AND HYMN_NUMBER="15";
+-- hf/15 is mapped to h/473 for some reason, but it actually is the french version of h/1084. So we need to update the languages json and copy over Author(null), Composer(null), Key(F Major), Time(3/4), Meter(8.8.8.8), Hymn Code(51712165172321), Scriptures (Song of Songs) from h/1084
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)", "path":"/en/hymn/ts/302?gb=1"}, {"value":"詩歌(繁)", "path":"/en/hymn/ts/302"}, {"value":"Dutch", "path":"/en/hymn/hd/19"}, {"value":"English", "path":"/en/hymn/h/1084"}]}', SONG_META_DATA_AUTHOR = NULL, SONG_META_DATA_COMPOSER = NULL, SONG_META_DATA_KEY = "F Major", SONG_META_DATA_TIME = "3/4", SONG_META_DATA_METER = "8.8.8.8", SONG_META_DATA_HYMN_CODE = "51712165172321", SONG_META_DATA_SCRIPTURES = "Song of Songs" WHERE HYMN_TYPE="hf" AND HYMN_NUMBER="15";
+-- h/8079 and h/79 are related. However, the language mappings for each is all messed up.
+-- Here is the current mapping: h/79->cb/79,ch/68,ht/79; cb/79->h/79,ch/68,ht/79; h/8079->cb/79,ch/68,ht/79; ht/79->h/79,ch/68,cb/79; ch/68->h/8079,cb/79,ht/79
+-- Here is the correct mapping: h/79->cb/79; cb/79->h/79; h/8079->ch/68,ht/79; ht/79->h/8079,ch/68; ch/68->h/8079,ht/79
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"Cebuano", "path":"/en/hymn/cb/79"}]}' WHERE HYMN_TYPE="h" AND HYMN_NUMBER="79" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/79"}]}' WHERE HYMN_TYPE="cb" AND HYMN_NUMBER="79" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)", "path":"/en/hymn/ch/68?gb=1"}, {"value":"詩歌(繁)", "path":"/en/hymn/ch/68"}, {"value":"Tagalog", "path":"/en/hymn/ht/79"}]}' WHERE HYMN_TYPE="h" AND HYMN_NUMBER="8079" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/8079"}, {"value":"诗歌(简)", "path":"/en/hymn/ch/68?gb=1"}, {"value":"詩歌(繁)", "path":"/en/hymn/ch/68"}]}' WHERE HYMN_TYPE="ht" AND HYMN_NUMBER="79" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/8079"}, {"value":"Tagalog", "path":"/en/hymn/ht/79"}, {"value":"诗歌(简)", "path":"/en/hymn/ch/68?gb=1"}]}' WHERE HYMN_TYPE="ch" AND HYMN_NUMBER="68" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/8079"}, {"value":"Tagalog", "path":"/en/hymn/ht/79"}, {"value":"詩歌(繁)", "path":"/en/hymn/ch/68"}]}' WHERE HYMN_TYPE="ch" AND HYMN_NUMBER="68" and QUERY_PARAMS = "?gb=1";
+-- ch/632 is mapped to h/870b, which is an alternate tune of h/870. So we need to fix that and make it map to h/870 instead
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"詩歌(繁)","path":"/en/hymn/ch/632"}, {"value":"Cebuano","path":"/en/hymn/cb/870"}, {"value":"English","path":"/en/hymn/h/870"}, {"value":"Tagalog","path":"/en/hymn/ht/870"}]}' WHERE HYMN_TYPE="ch" AND HYMN_NUMBER="632" and QUERY_PARAMS = "?gb=1";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)","path":"/en/hymn/ch/632?gb=1"}, {"value":"Cebuano","path":"/en/hymn/cb/870"}, {"value":"English","path":"/en/hymn/h/870"}, {"value":"Tagalog","path":"/en/hymn/ht/870"}]}' WHERE HYMN_TYPE="ch" AND HYMN_NUMBER="632" and QUERY_PARAMS = "";
+-- ts/248 is mapped to h/300b, which is an alternate tune of h/300. So we need to fix that and make it map to h/300 instead
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"詩歌(繁)","path":"/en/hymn/ts/248"}, {"value":"Cebuano","path":"/en/hymn/cb/300"}, {"value":"English","path":"/en/hymn/h/300"}, {"value":"Tagalog","path":"/en/hymn/ht/300"}]}' WHERE HYMN_TYPE="ts" AND HYMN_NUMBER="248" and QUERY_PARAMS = "?gb=1";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)","path":"/en/hymn/ts/248?gb=1"}, {"value":"Cebuano","path":"/en/hymn/cb/300"}, {"value":"English","path":"/en/hymn/h/300"}, {"value":"Tagalog","path":"/en/hymn/ht/300"}]}' WHERE HYMN_TYPE="ts" AND HYMN_NUMBER="248" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYMN_NUMBER="300b" and QUERY_PARAMS = "";
+-- fr/129 and ch/476 are mapped to h/8476, which is an alternate tune of h/1353. So we need to fix that and make it map to h/1353 instead
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)","path":"/en/hymn/ch/476?gb=1"}, {"value":"詩歌(繁)","path":"/en/hymn/ch/476"}, {"value":"English","path":"/en/hymn/h/1353"}, {"value":"Tagalog","path":"/en/hymn/ht/1353"}]}' WHERE HYMN_TYPE="hf" AND HYMN_NUMBER="129" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"詩歌(繁)","path":"/en/hymn/ch/476"}, {"value":"French","path":"/en/hymn/hf/129"}, {"value":"English","path":"/en/hymn/h/1353"}, {"value":"Tagalog","path":"/en/hymn/ht/1353"}]}' WHERE HYMN_TYPE="ch" AND HYMN_NUMBER="476" and QUERY_PARAMS = "?gb=1";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)","path":"/en/hymn/ch/476?gb=1"}, {"value":"French","path":"/en/hymn/hf/129"}, {"value":"English","path":"/en/hymn/h/1353"}, {"value":"Tagalog","path":"/en/hymn/ht/1353"}]}' WHERE HYMN_TYPE="ch" AND HYMN_NUMBER="476" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYMN_NUMBER="8476" and QUERY_PARAMS = "";
+-- h/267 and h/1360 are related. However, the language mappings for each is all messed up.
+-- Here is the current mapping: h/267->cb/267,ch/217,ht/267; cb/267->h/267,ch/217,ht/267; h/1360->cb/267,ch/217,ht/1360; ht/267->h/267,cb/267,ch/217; ch/217->h/1360,cb/267,ht/1360; ht/1360->cb/267,ch/217,h/1360; hf/46->cb/267,ch/217,h/267,de/267,ht/267; de267->cb/267,ch/217,h/267,hf/46,ht/267
+-- Here is the correct mapping: h/267->cb/267,ht/267; cb/267->h/267,ht/267; ht/267->h/267,cb/267; h/1360->ch/217,ht/1360; ch/217->h/1360,ht/1360; ht/1360->ch/217,h/1360; hf/46->ch/217,h/1360,ht/1360; de/267->cb/267,h/267,ht/267
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"Cebuano", "path":"/en/hymn/cb/267"}, {"value":"Tagalog", "path":"/en/hymn/ht/267"}]}' WHERE HYMN_TYPE="h" AND HYMN_NUMBER="267" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/267"}, {"value":"Tagalog", "path":"/en/hymn/ht/267"}]}' WHERE HYMN_TYPE="cb" AND HYMN_NUMBER="267" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/267"}, {"value":"Cebuano", "path":"/en/hymn/cb/267"}]}' WHERE HYMN_TYPE="ht" AND HYMN_NUMBER="267" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)", "path":"/en/hymn/ch/217?gb=1"}, {"value":"詩歌(繁)", "path":"/en/hymn/ch/217"}, {"value":"Tagalog", "path":"/en/hymn/ht/1360"}]}' WHERE HYMN_TYPE="h" AND HYMN_NUMBER="1360" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)", "path":"/en/hymn/ch/217?gb=1"}, {"value":"詩歌(繁)", "path":"/en/hymn/ch/217"}, {"value":"Tagalog", "path":"/en/hymn/ht/1360"}]}' WHERE HYMN_TYPE="h" AND HYMN_NUMBER="1360" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/1360"}, {"value":"Tagalog", "path":"/en/hymn/ht/1360"}, {"value":"诗歌(简)", "path":"/en/hymn/ch/217?gb=1"}]}' WHERE HYMN_TYPE="ch" AND HYMN_NUMBER="217" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/1360"}, {"value":"Tagalog", "path":"/en/hymn/ht/1360"}, {"value":"詩歌(繁)", "path":"/en/hymn/ch/217"}]}' WHERE HYMN_TYPE="ch" AND HYMN_NUMBER="217" and QUERY_PARAMS = "?gb=1";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/1360"}, {"value":"诗歌(简)", "path":"/en/hymn/ch/217?gb=1"}, {"value":"詩歌(繁)", "path":"/en/hymn/ch/217"}]}' WHERE HYMN_TYPE="ht" AND HYMN_NUMBER="1360" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)", "path":"/en/hymn/ch/217?gb=1"}, {"value":"詩歌(繁)", "path":"/en/hymn/ch/217"}, {"value":"English", "path":"/en/hymn/h/1360"}, {"value":"Tagalog", "path":"/en/hymn/ht/1360"}]}' WHERE HYMN_TYPE="hf" AND HYMN_NUMBER="46" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"Cebuano", "path":"/en/hymn/cb/267"}, {"value":"English", "path":"/en/hymn/h/267"}, {"value":"Tagalog", "path":"/en/hymn/ht/267"}]}' WHERE HYMN_TYPE="de" AND HYMN_NUMBER="267" and QUERY_PARAMS = "";
+-- h/445 and h/1359 are related. However, the language mappings for each is all messed up.
+-- Here is the current mapping: h/445->cb/445,ch/339,ht/1359; cb/445->h/445,ch/339,ht/1359; ht/445->cb/445,ch/339,h/445; h/1359->cb/445,ch/339,ht/1359; ch/339->h/1359,cb/445,ht/1359; ht/1359->h/1359,cb/445,ch/339; de/445->cb/445,ch/339,h/445,hf/79,ht/1359; hf/79->h/445,cb/445,ch/339,de/445,ht/1359
+-- Here is the correct mapping: h/445->cb/445,ht/445; cb/445->h/445,ht/445; ht/445->h/445,cb/445; h/1359->ch/339,ht/1359; ch/339->h/1359,ht/1359; ht/1359->h/1359,ch/339; de/445->h/445,cb/445,hf/79,ht/445; hf/79->h/445,cb/445,de/445,ht/445
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"Cebuano", "path":"/en/hymn/cb/445"}, {"value":"Tagalog", "path":"/en/hymn/ht/445"}]}' WHERE HYMN_TYPE="h" AND HYMN_NUMBER="445" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/445"}, {"value":"Tagalog", "path":"/en/hymn/ht/445"}]}' WHERE HYMN_TYPE="cb" AND HYMN_NUMBER="445" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/445"}, {"value":"Cebuano", "path":"/en/hymn/cb/445"}]}' WHERE HYMN_TYPE="ht" AND HYMN_NUMBER="445" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"诗歌(简)", "path":"/en/hymn/ch/339?gb=1"}, {"value":"詩歌(繁)", "path":"/en/hymn/ch/339"}, {"value":"Tagalog", "path":"/en/hymn/ht/1359"}]}' WHERE HYMN_TYPE="h" AND HYMN_NUMBER="1359" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/1359"}, {"value":"Tagalog", "path":"/en/hymn/ht/1359"}, {"value":"诗歌(简)", "path":"/en/hymn/ch/339?gb=1"}]}' WHERE HYMN_TYPE="ch" AND HYMN_NUMBER="339" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/1359"}, {"value":"Tagalog", "path":"/en/hymn/ht/1359"}, {"value":"詩歌(繁)", "path":"/en/hymn/ch/339"}]}' WHERE HYMN_TYPE="ch" AND HYMN_NUMBER="339" and QUERY_PARAMS = "?gb=1";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/1359"}, {"value":"诗歌(简)", "path":"/en/hymn/ch/339?gb=1"}, {"value":"詩歌(繁)", "path":"/en/hymn/ch/339"}]}' WHERE HYMN_TYPE="ht" AND HYMN_NUMBER="1359" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/445"}, {"value":"Cebuano", "path":"/en/hymn/cb/445"}, {"value":"German", "path":"/en/hymn/de/445"}, {"value":"Tagalog", "path":"/en/hymn/ht/445"}]}' WHERE HYMN_TYPE="de" AND HYMN_NUMBER="445" and QUERY_PARAMS = "";
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"value":"English", "path":"/en/hymn/h/445"}, {"value":"Cebuano", "path":"/en/hymn/cb/445"}, {"value":"French", "path":"/en/hymn/hf/79"}, {"value":"Tagalog", "path":"/en/hymn/ht/445"}]}' WHERE HYMN_TYPE="hf" AND HYMN_NUMBER="79" and QUERY_PARAMS = "";
+-- ch/357 is mapped to h/8357 and vice-versa, which is correct. However, h/480 also maps to ch/357, which is incorrect since ch/357 is the translation for h/8357, not h/480
+UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYMN_NUMBER="480" and QUERY_PARAMS = "";
 */
     private static void populateHymnalDbRelevant(HymnalDbKey hymnalDbKey) {
         Set<HymnalDbKey> allRelevant = new HashSet<>();
@@ -370,14 +439,13 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NU
             || relevantTypes.contains(HymnType.CHILDREN_SONG) && relevantTypes.contains(HymnType.NEW_SONG)
             || relevantTypes.contains(HymnType.CHINESE) && relevantTypes.contains(HymnType.CHINESE_SUPPLEMENT)) {
 
-            //noinspection StatementWithEmptyBody
-            if (allRelevant.contains(new HymnalDbKey(HymnType.CHINESE, "641", null))
-                && allRelevant.contains(new HymnalDbKey(HymnType.CHINESE_SUPPLEMENT, "917", null))) {
-                // do not throw exception because both these songs actually map to the same English song.
-            } else if (allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "1358", null))
-                && allRelevant.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "921", null))) {
-                // do not throw exception because these songs are related and thus can have different Chinese songs.
-            } else {
+            boolean isHymnalDbException = false;
+            for (Set<HymnalDbKey> exception : hymnalDbExceptions) {
+                if (allRelevant.containsAll(exception)) {
+                    isHymnalDbException = true;
+                }
+            }
+            if (!isHymnalDbException) {
                 throw new IllegalArgumentException(
                     String.format("%s has conflicting languages types: %s", hymnalDbKey, allRelevant.toString()));
             }
@@ -617,33 +685,9 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NU
         }
     }
 
-    private static void verifyOnlyOneInstanceOfEachType(H4aKey h4aKey, Set<H4aKey> allRelevant) {
-        List<HymnType> relevantTypes = new ArrayList<>();
-        for (H4aKey key : allRelevant) {
-            relevantTypes.add(key.type());
-        }
-
-        for (HymnType hymnType : HymnType.values()) {
-            if (Collections.frequency(relevantTypes, hymnType) > 1) {
-                // It's okay if a song maps to both E445 and E1359, since they are basically the same song, only that
-                // E1359 has a chorus.
-                if (allRelevant.contains(new H4aKey("E445")) && allRelevant.contains(new H4aKey("E1359"))) {
-                    continue;
-                }
-                throw new IllegalArgumentException(
-                    String.format("%s contains two %s songs %s", h4aKey.id, hymnType, allRelevant.toString()));
-            }
-        }
-    }
-
     private static void populateH4aRelevant(H4aKey h4aKey) {
-        if (h4aKey.id.equals("K584")) {
-            System.out.println("found!!");
-        }
         Set<H4aKey> allRelevant = new HashSet<>();
-
         populateH4aRelevantHelper(h4aKey, allRelevant);
-
         verifyOnlyOneInstanceOfEachType(h4aKey, allRelevant);
 
         // Audit allRelevant to see if there are conflicting types
@@ -652,24 +696,34 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NU
             relevantTypes.add(key.type());
         }
 
-        if (relevantTypes.contains(HymnType.CLASSIC_HYMN) && relevantTypes.contains(HymnType.NEW_SONG)) {
-            throw new IllegalArgumentException(
-                String.format("%s has both E and NS languages songs %s", h4aKey.id, allRelevant.toString()));
+        boolean isHymnalDbException = false;
+        for (Set<HymnalDbKey> exception : hymnalDbExceptions) {
+            Set<H4aKey> transformed = exception.stream().map(HymnalDbKey::toH4aKey).collect(Collectors.toSet());
+            if (allRelevant.containsAll(transformed)) {
+                isHymnalDbException = true;
+            }
         }
 
-        if (relevantTypes.contains(HymnType.CLASSIC_HYMN) && relevantTypes.contains(HymnType.CHILDREN_SONG)) {
-            throw new IllegalArgumentException(
-                String.format("%s has both E and CH languages songs %s", h4aKey.id, allRelevant.toString()));
-        }
+        if (!isHymnalDbException) {
+            if (relevantTypes.contains(HymnType.CLASSIC_HYMN) && relevantTypes.contains(HymnType.NEW_SONG)) {
+                throw new IllegalArgumentException(
+                    String.format("%s has both E and NS languages songs %s", h4aKey.id, allRelevant.toString()));
+            }
 
-        if (relevantTypes.contains(HymnType.CHILDREN_SONG) && relevantTypes.contains(HymnType.NEW_SONG)) {
-            throw new IllegalArgumentException(
-                String.format("%s has both CH and NS languages songs %s", h4aKey.id, allRelevant.toString()));
-        }
+            if (relevantTypes.contains(HymnType.CLASSIC_HYMN) && relevantTypes.contains(HymnType.CHILDREN_SONG)) {
+                throw new IllegalArgumentException(
+                    String.format("%s has both E and CH languages songs %s", h4aKey.id, allRelevant.toString()));
+            }
 
-        if (relevantTypes.contains(HymnType.CHINESE) && relevantTypes.contains(HymnType.CHINESE_SUPPLEMENT)) {
-            throw new IllegalArgumentException(
-                String.format("%s has both C and CS languages songs %s", h4aKey.id, allRelevant.toString()));
+            if (relevantTypes.contains(HymnType.CHILDREN_SONG) && relevantTypes.contains(HymnType.NEW_SONG)) {
+                throw new IllegalArgumentException(
+                    String.format("%s has both CH and NS languages songs %s", h4aKey.id, allRelevant.toString()));
+            }
+
+            if (relevantTypes.contains(HymnType.CHINESE) && relevantTypes.contains(HymnType.CHINESE_SUPPLEMENT)) {
+                throw new IllegalArgumentException(
+                    String.format("%s has both C and CS languages songs %s", h4aKey.id, allRelevant.toString()));
+            }
         }
 
         addH4aRelevant(h4aKey, allRelevant); // populate "languages" field
@@ -686,20 +740,22 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NU
         }
 
         if (!h4aHymns.containsKey(h4aKey)) {
-            throw new IllegalArgumentException(h4aKey + " not found  in hymns");
+            throw new IllegalArgumentException(h4aKey + " not found in hymns");
         }
 
         ConvertedHymn h4aHymn = h4aHymns.get(h4aKey);
         List<H4aKey> relevant = h4aHymn.languages;
 
+        // High-level: remove the stuff that shouldn't be there
+        //
         // Look in hymnal db and remove all languages types that already exist in the hymnal db mapping. This is because
         // there are a lot of messed up mappings in h4a, and if they already exist in the hymnal db mapping, then we
         // can disregard it now and save some headache later.
         if (hymnalDbHymns.containsKey(h4aKey.toHymnalDbKey())) {
             ConvertedHymn hymnalDbHymn = hymnalDbHymns.get(h4aKey.toHymnalDbKey());
-            for (H4aKey h4aRelevant : new ArrayList<>(relevant)) {
+            for (H4aKey h4aRelevant : new ArrayList<>(relevant){{add(h4aKey);}}) {
                 for (H4aKey hymnalDbRelevant : hymnalDbHymn.languages) {
-                    if (hymnalDbRelevant.isSameType(h4aRelevant)) {
+                    if (hymnalDbRelevant.isSameType(h4aRelevant) && !hymnalDbHymn.languages.contains(h4aRelevant)) {
                         relevant.remove(h4aRelevant);
                     }
                 }
@@ -715,18 +771,16 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NU
             }
         }
 
-        // High-level: remove the stuff that shouldn't be there
         outerLoop:
         for (H4aKey relevantId : new ArrayList<>(relevant)) {
             // songs that show up in "languages" column but don't actually exist in the h4a db. These should be
             // ignored since they map to nothing.
             List<String> ignore =
-                Arrays.asList("CS158", "CS400", "C481c", "CS352", "CB381", "C513c", "C517c", "C510c", "C506c");
-            // Arrays.asList("R509", "C825", "C914", "ES437", "C912", "C389", "C834", "T898", "C815", "C486", "ES300",
-            //               "C806", "C905", "BF1040", "C856", "ES140", "C812", "C810", "C850", "C901", "C517c",
-            //               "C510c", "C513c", "CB57", "ES500", "ES422", "ES421", "ES261", "ES221", "ES164",
-            //               "ES163", "C925", "C917", "C840", "CS352", "CS158", "CB1360", "C506c", "CB381", "CS46",
-            //               "C481c", "CS9117", "CS400", "CS46");
+                Arrays.asList("R509", "C825", "C914", "ES437", "C912", "C389", "C834", "T898", "C815", "C486", "ES300",
+                              "C806", "C905", "BF1040", "C856", "ES140", "C812", "C810", "C850", "C901", "C517c",
+                              "C510c", "C513c", "CB57", "ES500", "ES422", "ES421", "ES261", "ES221", "ES164",
+                              "ES163", "C925", "C917", "C840", "CS352", "CS158", "CB1360", "C506c", "CB381", "CS46",
+                              "C481c", "CS9117", "CS400", "CS46");
 
             if (ignore.contains(relevantId.id)) {
                 relevant.remove(relevantId);
@@ -808,6 +862,27 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NU
         allRelevant.add(h4aKey);
         for (H4aKey relevantId : relevant) {
             populateH4aRelevantHelper(relevantId, allRelevant);
+        }
+    }
+
+    private static void verifyOnlyOneInstanceOfEachType(H4aKey h4aKey, Set<H4aKey> allRelevant) {
+        List<HymnType> relevantTypes = new ArrayList<>();
+        for (H4aKey key : allRelevant) {
+            relevantTypes.add(key.type());
+        }
+
+        outerLoop:
+        for (HymnType hymnType : HymnType.values()) {
+            if (Collections.frequency(relevantTypes, hymnType) > 1) {
+                for (Set<HymnalDbKey> exception : hymnalDbExceptions) {
+                    Set<H4aKey> transformed = exception.stream().map(HymnalDbKey::toH4aKey).collect(Collectors.toSet());
+                    if (allRelevant.containsAll(transformed)) {
+                        continue outerLoop;
+                    }
+                }
+                throw new IllegalArgumentException(
+                    String.format("%s contains two %s songs %s", h4aKey.id, hymnType, allRelevant.toString()));
+            }
         }
     }
 
@@ -998,34 +1073,59 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL, SONG_META_DATA_AUTHOR = NU
                     break;
                 case CHINESE_SUPPLEMENT:
                 case CHINESE:
-                    if (h4aKey.id.equals("NS154")) {
-                        // ns/154 is closely related to h/8330 so this chinese song (ch/330) should map to both
-                        // h/8330 (already mapped) and ns154.
+                    if (h4aRelevant.id.equals("CS917") && (h4aKey.id.equals("CB893") || h4aKey.id.equals("E893") || h4aKey.id.equals("C641") || h4aKey.id.equals("G893"))) {
+                        // C641 and CS917 are both chinese translations to E893. So we need to distinguish them somehow
+                        value = "補充詩歌(繁)";
+                        break;
+                    }
+                    if (h4aRelevant.id.equals("C641") && h4aKey.id.equals("CS917")) {
+                        // C641 and CS917 are both chinese translations to E893. So this mapping is legitimate.
+                        value = "詩歌(繁)";
+                        break;
+                    }
+                    if (h4aKey.id.equals("NS154") && h4aRelevant.id.equals("C330")) {
+                        // NS154 is closely related to h/8330 so this chinese song (C330) should map to both E8330
+                        // (already mapped) and NS154.
                         value = "詩歌(繁)";
                         break;
                     }
                 case NEW_SONG:
-                    if (h4aKey.id.equals("C330")) {
-                        // ns/154 is closely related to h/8330 and thus should be also mapped to ch/330 as well as
-                        // h/8330 (already mapped)
+                    if (h4aKey.id.equals("C330") && h4aRelevant.id.equals("NS154")) {
+                        // NS154 is closely related to h/8330 and thus should be also mapped to C330 as well as
+                        // E8330 (already mapped)
                         value = "New Song";
+                        break;
+                    }
+                    if (h4aKey.id.equals("CS228") && h4aRelevant.id.equals("NS195")) {
+                        // NS195 is mapped to CS228 in hymnal db, but not vice versa, so it is appropriate to add it
+                        // here.
+                        value = "English";
                         break;
                     }
                 case CLASSIC_HYMN:
                     if (h4aKey.id.equals("T1351")) {
                         // Legitimate case where we should be adding an English song mapping because T1351 is not mapped
-                        // To its English song on hymnal.net for some reason.
+                        // to its English song on hymnal.net for some reason.
                         value = "English";
                         break;
                     }
-                    if (h4aRelevant.id.equals("E1359") || h4aRelevant.id.equals("E445")) {
-                        // These two songs are basically the same song, just one with a chorus and one without.
-                        // Therefore, it's appropriate it'd be the English version of multiple language songs.
+                    if (h4aKey.id.equals("C549")) {
+                        // Legitimate case where we should be adding an English song mapping because C549 is not mapped
+                        // to its English song on hymnal.net for some reason, but the English song (E755) is mapped to
+                        // C549.
+                        value = "English";
+                        break;
+                    }
+                    if (h4aKey.id.equals("C526") && h4aRelevant.id.equals("E720")) {
+                        // There is a three-way mapping between NT720, E720, and E8526. They are mostly just new tunes
+                        // and alternate tunes of each other. Since they are just alternate tunes of each other, C526 is
+                        // a valid translation for all 3 of them.
                         value = "English";
                         break;
                     }
                 default:
-                    throw new IllegalArgumentException("found unexpected type: " + type);
+                    throw new IllegalArgumentException(
+                        "found unexpected type: " + type + "(" + h4aRelevant + ") for " + h4aKey);
             }
             datum.setPath("/en/hymn/" + type.hymnalDb + "/" + h4aRelevant.number());
             datum.setValue(value);
