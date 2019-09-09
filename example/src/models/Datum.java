@@ -29,6 +29,21 @@ public class Datum {
     }
 
     @Override
+    public boolean equals(Object obj) {
+        if (!(obj instanceof Datum)) {
+            return false;
+        }
+
+        Datum otherDatum = (Datum) obj;
+        return path.equals(otherDatum.path) && value.equals(otherDatum.value);
+    }
+
+    @Override
+    public int hashCode() {
+        return path.hashCode() + value.hashCode();
+    }
+
+    @Override
     public String toString() {
         return value + " " + path;
     }

@@ -29,6 +29,12 @@ public final class Main {
 
     private static final boolean DEBUG_LOG = true;
 
+    /**
+     * Use a custom escape sequence, since Gson will auto-escape strings and screw everything up. Right before we save
+     * the value, we will undo the custom escape character and replace it with the standard \".
+     */
+    private static final String CUSTOM_ESCAPE = "$CUSESP$";
+
     private static void LOG(String logStatement) {
         if (DEBUG_LOG) {
             System.out.println(logStatement);
@@ -84,7 +90,7 @@ public final class Main {
     private static String toJsonString(Object src) {
         return
             new GsonBuilder()
-                .disableHtmlEscaping().create().toJson(src)
+                .create().toJson(src)
                 .replace("\\\"", "\"")
                 .replace("\"[", "[")
                 .replace("]\"", "]")
@@ -98,7 +104,7 @@ public final class Main {
 
         populateHymnalDbHymns(hymnalClient.getDb().rawQuery("SELECT * FROM song_data"));
         for (HymnalDbKey hymnalDbKey : hymnalDbHymns.keySet()) {
-            populateHymnalDbRelevant(hymnalDbKey);
+            populateHymnalDbLanguages(hymnalDbKey);
         }
 
         // Need to fetch in this particular order so we can populate the "related" and "languages" fields properly.
@@ -258,11 +264,17 @@ public final class Main {
         // just remove the mapping here.
         h4aHymns.get(new H4aKey("E480")).languages.remove(new H4aKey("C357"));
 
-        for (H4aKey h4aKey : new HashSet<>(h4aHymns.keySet())) {
-            populateH4aRelevant(h4aKey);
-        }
+        // These two songs are the Chinese and German translations of "God's eternal economy." These two songs error
+        // out because CS1004's related song is G10001, which cannot be caught by fixGermanSongs. These both are covered
+        // in hymnal db, so G10001 is safe to remove.
+        h4aHymns.get(new H4aKey("CS1004")).languages.clear();
+        h4aHymns.remove(new H4aKey("G10001"));
 
         fixGermanSongs();
+
+        for (H4aKey h4aKey : new HashSet<>(h4aHymns.keySet())) {
+            populateH4aLanguages(h4aKey);
+        }
 
         for (H4aKey h4aKey : h4aHymns.keySet()) {
             HymnalDbKey hymnalDbKey = h4aKey.toHymnalDbKey();
@@ -395,13 +407,13 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = '{"name":"Languages","data":[{"v
 -- ch/357 is mapped to h/8357 and vice-versa, which is correct. However, h/480 also maps to ch/357, which is incorrect since ch/357 is the translation for h/8357, not h/480
 UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYMN_NUMBER="480" and QUERY_PARAMS = "";
 */
-    private static void populateHymnalDbRelevant(HymnalDbKey hymnalDbKey) {
-        Set<HymnalDbKey> allRelevant = new HashSet<>();
-        populateHymnalDbRelevantHelper(hymnalDbKey, allRelevant);
+    private static void populateHymnalDbLanguages(HymnalDbKey hymnalDbKey) {
+        Set<HymnalDbKey> allLanguages = new HashSet<>();
+        populateHymnalDbLanguagesHelper(hymnalDbKey, allLanguages);
 
-        /* Audit allRelevant to see if there are conflicting types */
+        /* Audit allLanguages to see if there are conflicting types */
         List<HymnType> relevantTypes = new ArrayList<>();
-        for (HymnalDbKey key : allRelevant) {
+        for (HymnalDbKey key : allLanguages) {
             relevantTypes.add(key.hymnType);
         }
 
@@ -413,7 +425,7 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
                 timesAllowed = 2;
             }
             if (hymnType == HymnType.CLASSIC_HYMN || hymnType == HymnType.NEW_SONG) {
-                for (HymnalDbKey key : allRelevant) {
+                for (HymnalDbKey key : allLanguages) {
                     String number = key.hymnNumber;
                     if (number.matches("(\\D+\\d+\\D*)|(\\D*\\d+\\D+)")) {
                         continue outerLoop;
@@ -422,14 +434,14 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
             }
 
             for (Set<HymnalDbKey> exception : hymnalDbExceptions) {
-                if (allRelevant.containsAll(exception)) {
+                if (allLanguages.containsAll(exception)) {
                     continue outerLoop;
                 }
             }
 
             if (Collections.frequency(relevantTypes, hymnType) > timesAllowed) {
                 throw new IllegalArgumentException(
-                    String.format("%s has too many instances of %s: %s", hymnalDbKey, hymnType, allRelevant));
+                    String.format("%s has too many instances of %s: %s", hymnalDbKey, hymnType, allLanguages));
             }
         }
 
@@ -441,27 +453,27 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
 
             boolean isHymnalDbException = false;
             for (Set<HymnalDbKey> exception : hymnalDbExceptions) {
-                if (allRelevant.containsAll(exception)) {
+                if (allLanguages.containsAll(exception)) {
                     isHymnalDbException = true;
                 }
             }
             if (!isHymnalDbException) {
                 throw new IllegalArgumentException(
-                    String.format("%s has conflicting languages types: %s", hymnalDbKey, allRelevant.toString()));
+                    String.format("%s has conflicting languages types: %s", hymnalDbKey, allLanguages.toString()));
             }
         }
         /* Audit complete */
 
-        addHymnalDbRelevant(hymnalDbKey, allRelevant); // populate "languages" field
+        addHymnalDbLanguages(hymnalDbKey, allLanguages); // populate "languages" field
         ConvertedHymn hymn = hymnalDbHymns.get(hymnalDbKey);
         for (H4aKey relevant : hymn.languages) {
             // populate all languages songs' "languages" fields
-            addHymnalDbRelevant(relevant.toHymnalDbKey(), allRelevant);
+            addHymnalDbLanguages(relevant.toHymnalDbKey(), allLanguages);
         }
     }
 
-    private static void populateHymnalDbRelevantHelper(HymnalDbKey hymnalDbKey, Set<HymnalDbKey> allRelevant) {
-        if (allRelevant.contains(hymnalDbKey)) {
+    private static void populateHymnalDbLanguagesHelper(HymnalDbKey hymnalDbKey, Set<HymnalDbKey> allLanguages) {
+        if (allLanguages.contains(hymnalDbKey)) {
             return;
         }
 
@@ -469,7 +481,7 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
             throw new IllegalArgumentException(String.format("%s not found in hymnal db", hymnalDbKey.toString()));
         }
 
-        allRelevant.add(hymnalDbKey);
+        allLanguages.add(hymnalDbKey);
 
         ConvertedHymn hymnalDbHymn = hymnalDbHymns.get(hymnalDbKey);
         Languages languages = new Gson().fromJson(hymnalDbHymn.languagesJson, Languages.class);
@@ -480,18 +492,18 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
             }).collect(Collectors.toList());
 
             for (HymnalDbKey relevantId : new ArrayList<>(related)) {
-                populateHymnalDbRelevantHelper(relevantId, allRelevant);
+                populateHymnalDbLanguagesHelper(relevantId, allLanguages);
             }
         }
     }
 
-    private static void addHymnalDbRelevant(HymnalDbKey key, Set<HymnalDbKey> allRelevant) {
+    private static void addHymnalDbLanguages(HymnalDbKey key, Set<HymnalDbKey> allLanguages) {
         if (!hymnalDbHymns.containsKey(key)) {
             return;
         }
 
         ConvertedHymn convertedHymn = hymnalDbHymns.get(key);
-        for (HymnalDbKey relevant : allRelevant) {
+        for (HymnalDbKey relevant : allLanguages) {
             H4aKey h4aKey = relevant.toH4aKey();
             if (h4aKey != null && !relevant.equals(key) && !convertedHymn.languages.contains(h4aKey)) {
                 convertedHymn.languages.add(h4aKey);
@@ -554,10 +566,14 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
                     if (TextUtils.isEmpty(line)) {
                         continue;
                     }
+                    // Use a custom escape method, since GSON will auto-escape strings and screw everything up. Right
+                    // before we save the value, we will undo the custom escape character and replace it with the
+                    // standard \".
+                    line = line.replace("\"", CUSTOM_ESCAPE + "\"");
                     verseContent.add(line);
                 }
 
-                verse.put(Constants.VERSE_CONTENT, toJsonString(lines));
+                verse.put(Constants.VERSE_CONTENT, toJsonString(verseContent));
                 if (!TextUtils.isEmpty(note)) {
                     verse.put(Constants.NOTE, note);
                 }
@@ -595,7 +611,7 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
 
                 lyrics.add(toJsonString(verse));
             }
-            String lyricsJson = toJsonString(lyrics);
+            String lyricsJson = toJsonString(lyrics).replace(CUSTOM_ESCAPE + "\"", "\\\"");
             if (TextUtils.isEmpty(lyricsJson)) {
                 throw new IllegalArgumentException("lyrics empty for " + key);
             }
@@ -685,21 +701,21 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
         }
     }
 
-    private static void populateH4aRelevant(H4aKey h4aKey) {
-        Set<H4aKey> allRelevant = new HashSet<>();
-        populateH4aRelevantHelper(h4aKey, allRelevant);
-        verifyOnlyOneInstanceOfEachType(h4aKey, allRelevant);
+    private static void populateH4aLanguages(H4aKey h4aKey) {
+        Set<H4aKey> allLanguages = new HashSet<>();
+        populateH4aLanguagesHelper(h4aKey, allLanguages);
+        verifyOnlyOneInstanceOfEachType(h4aKey, allLanguages);
 
-        // Audit allRelevant to see if there are conflicting types
+        // Audit allLanguages to see if there are conflicting types
         List<HymnType> relevantTypes = new ArrayList<>();
-        for (H4aKey key : allRelevant) {
+        for (H4aKey key : allLanguages) {
             relevantTypes.add(key.type());
         }
 
         boolean isHymnalDbException = false;
         for (Set<HymnalDbKey> exception : hymnalDbExceptions) {
             Set<H4aKey> transformed = exception.stream().map(HymnalDbKey::toH4aKey).collect(Collectors.toSet());
-            if (allRelevant.containsAll(transformed)) {
+            if (allLanguages.containsAll(transformed)) {
                 isHymnalDbException = true;
             }
         }
@@ -707,34 +723,34 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
         if (!isHymnalDbException) {
             if (relevantTypes.contains(HymnType.CLASSIC_HYMN) && relevantTypes.contains(HymnType.NEW_SONG)) {
                 throw new IllegalArgumentException(
-                    String.format("%s has both E and NS languages songs %s", h4aKey.id, allRelevant.toString()));
+                    String.format("%s has both E and NS languages songs %s", h4aKey.id, allLanguages.toString()));
             }
 
             if (relevantTypes.contains(HymnType.CLASSIC_HYMN) && relevantTypes.contains(HymnType.CHILDREN_SONG)) {
                 throw new IllegalArgumentException(
-                    String.format("%s has both E and CH languages songs %s", h4aKey.id, allRelevant.toString()));
+                    String.format("%s has both E and CH languages songs %s", h4aKey.id, allLanguages.toString()));
             }
 
             if (relevantTypes.contains(HymnType.CHILDREN_SONG) && relevantTypes.contains(HymnType.NEW_SONG)) {
                 throw new IllegalArgumentException(
-                    String.format("%s has both CH and NS languages songs %s", h4aKey.id, allRelevant.toString()));
+                    String.format("%s has both CH and NS languages songs %s", h4aKey.id, allLanguages.toString()));
             }
 
             if (relevantTypes.contains(HymnType.CHINESE) && relevantTypes.contains(HymnType.CHINESE_SUPPLEMENT)) {
                 throw new IllegalArgumentException(
-                    String.format("%s has both C and CS languages songs %s", h4aKey.id, allRelevant.toString()));
+                    String.format("%s has both C and CS languages songs %s", h4aKey.id, allLanguages.toString()));
             }
         }
 
-        addH4aRelevant(h4aKey, allRelevant); // populate "languages" field
+        addH4aRelevant(h4aKey, allLanguages); // populate "languages" field
         ConvertedHymn hymn = h4aHymns.get(h4aKey);
         for (H4aKey relevant : hymn.languages) {
             // populate all languages songs' "languages" fields
-            addH4aRelevant(relevant, allRelevant);
+            addH4aRelevant(relevant, allLanguages);
         }
     }
 
-    private static void populateH4aRelevantHelper(H4aKey h4aKey, Set<H4aKey> allRelevant) {
+    private static void populateH4aLanguagesHelper(H4aKey h4aKey, Set<H4aKey> allLanguages) {
         if (h4aKey.type() == HymnType.BE_FILLED) {
             return;
         }
@@ -810,7 +826,7 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
                 relevant.remove(relevantId);
                 relevantId = new H4aKey(HymnType.SPANISH, relevantId.number());
                 relevant.add(relevantId);
-                allRelevant.add(relevantId);
+                allLanguages.add(relevantId);
                 // do not continue since this is a correction and we should add the correct languages hymn.
             }
 
@@ -855,19 +871,19 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
         }
         // End of removal
 
-        if (allRelevant.contains(h4aKey)) {
+        if (allLanguages.contains(h4aKey)) {
             return;
         }
 
-        allRelevant.add(h4aKey);
+        allLanguages.add(h4aKey);
         for (H4aKey relevantId : relevant) {
-            populateH4aRelevantHelper(relevantId, allRelevant);
+            populateH4aLanguagesHelper(relevantId, allLanguages);
         }
     }
 
-    private static void verifyOnlyOneInstanceOfEachType(H4aKey h4aKey, Set<H4aKey> allRelevant) {
+    private static void verifyOnlyOneInstanceOfEachType(H4aKey h4aKey, Set<H4aKey> allLanguages) {
         List<HymnType> relevantTypes = new ArrayList<>();
-        for (H4aKey key : allRelevant) {
+        for (H4aKey key : allLanguages) {
             relevantTypes.add(key.type());
         }
 
@@ -876,23 +892,23 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
             if (Collections.frequency(relevantTypes, hymnType) > 1) {
                 for (Set<HymnalDbKey> exception : hymnalDbExceptions) {
                     Set<H4aKey> transformed = exception.stream().map(HymnalDbKey::toH4aKey).collect(Collectors.toSet());
-                    if (allRelevant.containsAll(transformed)) {
+                    if (allLanguages.containsAll(transformed)) {
                         continue outerLoop;
                     }
                 }
                 throw new IllegalArgumentException(
-                    String.format("%s contains two %s songs %s", h4aKey.id, hymnType, allRelevant.toString()));
+                    String.format("%s contains two %s songs %s", h4aKey.id, hymnType, allLanguages.toString()));
             }
         }
     }
 
-    private static void addH4aRelevant(H4aKey key, Set<H4aKey> allRelevant) {
+    private static void addH4aRelevant(H4aKey key, Set<H4aKey> allLanguages) {
         if (!h4aHymns.containsKey(key)) {
             return;
         }
 
         ConvertedHymn convertedHymn = h4aHymns.get(key);
-        for (H4aKey relevant : allRelevant) {
+        for (H4aKey relevant : allLanguages) {
             if (!relevant.equals(key) && !convertedHymn.languages.contains(relevant)) {
                 convertedHymn.languages.add(relevant);
             }
@@ -908,7 +924,6 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
         do {
             somethingChanged = false;
             for (H4aKey h4aKey : new HashSet<>(h4aHymns.keySet())) {
-
                 // if not a german song, continue
                 if (h4aKey.type() != HymnType.GERMAN) {
                     continue;
@@ -1131,6 +1146,92 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
             datum.setValue(value);
             hymnalDbLanguagesData.getData().add(datum);
         }
+
+        // Populate the languages map again, this time taking into account both the hymnal db version and the H4a
+        // version of the song
+        Set<Datum> allLanguagesDatum = new HashSet<>();
+        for (Datum language : hymnalDbLanguagesData.getData()) {
+            populateHymnalDbAndH4aLanguages(language, allLanguagesDatum);
+        }
+
+        Set<HymnalDbKey> allLanguages = allLanguagesDatum.stream()
+                                                         .map(datum -> HymnalDbKey.extractFromPath(datum.getPath()))
+                                                         .collect(Collectors.toSet());
+
+        /* Audit allLanguages to see if there are conflicting types */
+        List<HymnType> relevantTypes = new ArrayList<>();
+        for (HymnalDbKey key : allLanguages) {
+            relevantTypes.add(key.hymnType);
+        }
+
+        // Verify that the same hymn type doesn't appear more than the allowed number of times the languages list.
+        outerLoop:
+        for (HymnType hymnType : HymnType.values()) {
+            int timesAllowed = 1;
+            if (hymnType == HymnType.CHINESE || hymnType == HymnType.CHINESE_SUPPLEMENT) {
+                timesAllowed = 2;
+            }
+            if (hymnType == HymnType.CLASSIC_HYMN || hymnType == HymnType.NEW_SONG) {
+                for (HymnalDbKey key : allLanguages) {
+                    String number = key.hymnNumber;
+                    if (number.matches("(\\D+\\d+\\D*)|(\\D*\\d+\\D+)")) {
+                        continue outerLoop;
+                    }
+                }
+            }
+
+            for (Set<HymnalDbKey> exception : hymnalDbExceptions) {
+                if (allLanguages.containsAll(exception)) {
+                    continue outerLoop;
+                }
+            }
+
+            if (Collections.frequency(relevantTypes, hymnType) > timesAllowed) {
+                if (allLanguages.contains(new HymnalDbKey(HymnType.TAGALOG, "437", null))
+                    && allLanguages.contains(new HymnalDbKey(HymnType.TAGALOG, "c333", null))) {
+                    continue;
+                }
+                throw new IllegalArgumentException(
+                    String.format("%s has too many instances of %s: %s", hymnalDbKey, hymnType, allLanguages));
+            }
+        }
+
+        // Verify that conflicting hymn types don't appear more together the languages list.
+        if ((relevantTypes.contains(HymnType.CLASSIC_HYMN) && relevantTypes.contains(HymnType.NEW_SONG))
+            || (relevantTypes.contains(HymnType.CLASSIC_HYMN) && relevantTypes.contains(HymnType.CHILDREN_SONG))
+            || relevantTypes.contains(HymnType.CHILDREN_SONG) && relevantTypes.contains(HymnType.NEW_SONG)
+            || relevantTypes.contains(HymnType.CHINESE) && relevantTypes.contains(HymnType.CHINESE_SUPPLEMENT)) {
+
+            boolean isExceptionCase = false;
+            for (Set<HymnalDbKey> exception : hymnalDbExceptions) {
+                if (allLanguages.containsAll(exception)) {
+                    isExceptionCase = true;
+                }
+            }
+
+            // NS154 is closely related to h/8330 so it is okay that ch/330 maps to both of them.
+            if (hymnalDbKey.equals(new HymnalDbKey(HymnType.CHINESE, "330", null))
+                && allLanguages.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "8330", null))
+                && allLanguages.contains(new HymnalDbKey(HymnType.NEW_SONG, "154", null))) {
+                isExceptionCase = true;
+            }
+
+            if (!isExceptionCase) {
+                throw new IllegalArgumentException(
+                    String.format("%s has conflicting languages types: %s", hymnalDbKey, allLanguages.toString()));
+            }
+        }
+        /* Audit complete */
+
+        for (Datum language : allLanguagesDatum) {
+            if (hymnalDbKey.equals(HymnalDbKey.extractFromPath(language.getPath()))) {
+                continue;
+            }
+            if (!hymnalDbLanguagesData.getData().contains(language)) {
+                hymnalDbLanguagesData.getData().add(language);
+            }
+        }
+
         final String languagesJson;
         if (hymnalDbLanguagesData.getData().isEmpty()) {
             languagesJson= null;
@@ -1145,6 +1246,31 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
         // doesn't offer anything new in that regard.
 
         return contentValues;
+    }
+
+    /**
+     * Go through and populate the languages map again, this time taking into account both the hymnal db version and the
+     * H4a version of the song
+     */
+    private static void populateHymnalDbAndH4aLanguages(Datum datum, Set<Datum> allLanguages) {
+        if (allLanguages.contains(datum)) {
+            return;
+        }
+
+        allLanguages.add(datum);
+
+        ConvertedHymn hymn = hymnalDbHymns.get(HymnalDbKey.extractFromPath(datum.getPath()));
+        if (hymn == null) {
+            return;
+        }
+        Languages hymnalDbLanguagesData = new Gson().fromJson(hymn.languagesJson, Languages.class);
+        if (hymnalDbLanguagesData == null) {
+            return;
+        }
+
+        for (Datum language : hymnalDbLanguagesData.getData()) {
+            populateHymnalDbAndH4aLanguages(language, allLanguages);
+        }
     }
 
     private static ContentValues toContentValues(H4aKey key) {
@@ -1208,12 +1334,27 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
                 case CLASSIC_HYMN:
                     value = "English";
                     break;
+                case CEBUANO:
+                    value = "Cebuano";
+                    break;
                 default:
-                    continue;
+                    throw new IllegalArgumentException(
+                        "found unexpected type: " + type + "(" + language + ") for " + key);
             }
             datum.setPath("/en/hymn/" + type.hymnalDb + "/" + language.number());
             datum.setValue(value);
             languages.getData().add(datum);
+
+            // Add the ?gb=1 version if it exists.
+            if (type == HymnType.CHINESE || type == HymnType.CHINESE_SUPPLEMENT) {
+                HymnalDbKey withQueryParams = new HymnalDbKey(language.type(), language.number(), "?gb=1");
+                if (hymnalDbHymns.containsKey(withQueryParams)) {
+                    Datum queryParamsDatum = new Datum();
+                    queryParamsDatum.setPath("/en/hymn/" + type.hymnalDb + "/" + language.number() + "?gb=1");
+                    queryParamsDatum.setValue("诗歌(简)");
+                    languages.getData().add(queryParamsDatum);
+                }
+            }
 
             // Remove this song from the languages list so we can add the rest to the relevantJson
             hymn.languages.remove(language);
