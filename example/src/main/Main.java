@@ -12,6 +12,7 @@ import net.sourceforge.pinyin4j.format.HanyuPinyinVCharType;
 import net.sourceforge.pinyin4j.format.exception.BadHanyuPinyinOutputFormatCombination;
 import repositories.DatabaseClient;
 
+import java.io.IOException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
@@ -298,6 +299,10 @@ public final class Main {
                     hymnalClient.getDb().insert("song_data", contentValues);
                 }
             }
+        }
+
+        if (!DRY_RUN) {
+            runTests(hymnalClient);
         }
 
         hymnalClient.close();
@@ -1379,5 +1384,102 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
             contentValues.put("SONG_META_DATA_RELEVANT", TextUtils.escapeSingleQuotes(relevantJson));
         }
         return contentValues;
+    }
+
+    /**
+     * Run through some basic tests to make sure databases have been migrated correctly.
+     */
+    private static void runTests(DatabaseClient hymnalClient) {
+        ResultSet resultSet = hymnalClient.getDb().rawQuery(
+            "SELECT * FROM song_data WHERE (hymn_type = 'h' AND hymn_number = '43') OR (hymn_type = 'S' AND hymn_number = '28')");
+
+        if (resultSet == null) {
+            throw new IllegalArgumentException("hymn 48 was not found in the database");
+        }
+
+        try {
+            resultSet.next();
+            ConvertedHymn h43 = new ConvertedHymn(resultSet.getString(5),
+                                                  resultSet.getString(6),
+                                                  resultSet.getString(7),
+                                                  resultSet.getString(8),
+                                                  resultSet.getString(9),
+                                                  resultSet.getString(10),
+                                                  resultSet.getString(11),
+                                                  resultSet.getString(12),
+                                                  resultSet.getString(13),
+                                                  resultSet.getString(14),
+                                                  resultSet.getString(15),
+                                                  resultSet.getString(16),
+                                                  resultSet.getString(17),
+                                                  resultSet.getString(18),
+                                                  resultSet.getString(19),
+                                                  resultSet.getString(20));
+
+            if (!TextUtils.isJsonValid(h43.lyricsJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(h43.musicJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(h43.svgJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(h43.pdfJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(h43.languagesJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(h43.relevantJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+
+            resultSet.next();
+            ConvertedHymn s28 = new ConvertedHymn(resultSet.getString(5),
+                                                  resultSet.getString(6),
+                                                  resultSet.getString(7),
+                                                  resultSet.getString(8),
+                                                  resultSet.getString(9),
+                                                  resultSet.getString(10),
+                                                  resultSet.getString(11),
+                                                  resultSet.getString(12),
+                                                  resultSet.getString(13),
+                                                  resultSet.getString(14),
+                                                  resultSet.getString(15),
+                                                  resultSet.getString(16),
+                                                  resultSet.getString(17),
+                                                  resultSet.getString(18),
+                                                  resultSet.getString(19),
+                                                  resultSet.getString(20));
+
+            if (!TextUtils.isJsonValid(s28.lyricsJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(s28.musicJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(s28.svgJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(s28.pdfJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(s28.languagesJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(s28.relevantJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+
+            Languages h43Languages = new Gson().fromJson(h43.languagesJson, Languages.class);
+            Languages s28Languages = new Gson().fromJson(s28.languagesJson, Languages.class);
+
+            if (h43Languages.getData().size() != s28Languages.getData().size()) {
+                throw new IllegalArgumentException("h43 and s28 has unequal languages");
+            }
+        } catch (SQLException | IOException e) {
+            throw new IllegalArgumentException(e);
+        }
     }
 }

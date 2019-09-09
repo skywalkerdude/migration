@@ -1,5 +1,15 @@
 package main;
 
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import com.google.gson.stream.MalformedJsonException;
+
+import java.io.IOException;
+import java.io.Reader;
+import java.io.StringReader;
+
+import static com.google.gson.stream.JsonToken.END_DOCUMENT;
+
 public class TextUtils {
 
     public static boolean isEmpty(String str) {
@@ -10,20 +20,24 @@ public class TextUtils {
      * Returns true if a and b are equal, including if they are both null.
      * <p>Note: In platform versions 1.1 and earlier, this method only worked well if
      * both the arguments were instances of String.</i>
-
+     *
      * @param a first CharSequence to check
      * @param b second CharSequence to check
      * @return true if a and b are equal
      */
     public static boolean equals(CharSequence a, CharSequence b) {
-        if (a == b) return true;
+        if (a == b) {
+            return true;
+        }
         int length;
         if (a != null && b != null && (length = a.length()) == b.length()) {
             if (a instanceof String && b instanceof String) {
                 return a.equals(b);
             } else {
                 for (int i = 0; i < length; i++) {
-                    if (a.charAt(i) != b.charAt(i)) return false;
+                    if (a.charAt(i) != b.charAt(i)) {
+                        return false;
+                    }
                 }
                 return true;
             }
@@ -87,5 +101,57 @@ public class TextUtils {
         }
 
         return str1.trim().length() >= str2.trim().length() ? str1.trim() : str2.trim();
+    }
+
+    public static boolean isJsonValid(final String json) throws IOException {
+        if (isEmpty(json)) {
+            return true;
+        }
+        return isJsonValid(new StringReader(json));
+    }
+
+    private static boolean isJsonValid(final Reader reader)
+        throws IOException {
+        return isJsonValid(new JsonReader(reader));
+    }
+
+    private static boolean isJsonValid(final JsonReader jsonReader)
+        throws IOException {
+        try {
+            JsonToken token;
+            loop:
+            while ((token = jsonReader.peek()) != END_DOCUMENT && token != null) {
+                switch (token) {
+                    case BEGIN_ARRAY:
+                        jsonReader.beginArray();
+                        break;
+                    case END_ARRAY:
+                        jsonReader.endArray();
+                        break;
+                    case BEGIN_OBJECT:
+                        jsonReader.beginObject();
+                        break;
+                    case END_OBJECT:
+                        jsonReader.endObject();
+                        break;
+                    case NAME:
+                        jsonReader.nextName();
+                        break;
+                    case STRING:
+                    case NUMBER:
+                    case BOOLEAN:
+                    case NULL:
+                        jsonReader.skipValue();
+                        break;
+                    case END_DOCUMENT:
+                        break loop;
+                    default:
+                        throw new AssertionError(token);
+                }
+            }
+            return true;
+        } catch (final MalformedJsonException ignored) {
+            return false;
+        }
     }
 }
