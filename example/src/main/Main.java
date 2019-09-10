@@ -92,6 +92,7 @@ public final class Main {
         return
             new GsonBuilder()
                 .create().toJson(src)
+                .replace("\\\\", "\\")
                 .replace("\\\"", "\"")
                 .replace("\"[", "[")
                 .replace("]\"", "]")
