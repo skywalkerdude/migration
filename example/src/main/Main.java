@@ -100,7 +100,7 @@ public final class Main {
     }
 
     public static void main(String[] args) throws SQLException, BadHanyuPinyinOutputFormatCombination {
-        DatabaseClient hymnalClient = new DatabaseClient(HYMNAL_DB_NAME, 10);
+        DatabaseClient hymnalClient = new DatabaseClient(HYMNAL_DB_NAME, 11);
         DatabaseClient h4aClient = new DatabaseClient(H4A_DB_NAME, 111);
 
         populateHymnalDbHymns(hymnalClient.getDb().rawQuery("SELECT * FROM song_data"));
