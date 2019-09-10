@@ -292,11 +292,25 @@ public final class Main {
                     }
                 }
             } else {
-                ContentValues contentValues = toContentValues(h4aKey);
+                ContentValues contentValues = writeSong(h4aKey);
                 LOG("Inserting " + h4aKey.toHymnalDbKey());
                 LOG(contentValues.toString());
                 if (!DRY_RUN) {
                     hymnalClient.getDb().insert("song_data", contentValues);
+                }
+            }
+        }
+
+        for (HymnalDbKey hymnalDbKey : hymnalDbHymns.keySet()) {
+            ContentValues contentValues = populateRelevantForSongsNotTouched(hymnalDbKey);
+            if (contentValues != null) {
+                LOG("Updating " + hymnalDbKey);
+                LOG(contentValues.toString());
+                if (!DRY_RUN) {
+                    hymnalClient.getDb().update("song_data", contentValues,
+                                                "HYMN_TYPE = \"" + hymnalDbKey.hymnType.hymnalDb
+                                                    + "\" AND HYMN_NUMBER = \"" + hymnalDbKey.hymnNumber
+                                                    + "\" AND QUERY_PARAMS = \"" + hymnalDbKey.queryParams + "\"");
                 }
             }
         }
@@ -1162,8 +1176,60 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
         Set<HymnalDbKey> allLanguages = allLanguagesDatum.stream()
                                                          .map(datum -> HymnalDbKey.extractFromPath(datum.getPath()))
                                                          .collect(Collectors.toSet());
+        auditPopulateHymnalDbAndH4aLanguages(hymnalDbKey, allLanguages);
 
-        /* Audit allLanguages to see if there are conflicting types */
+        for (Datum language : allLanguagesDatum) {
+            if (hymnalDbKey.equals(HymnalDbKey.extractFromPath(language.getPath()))) {
+                continue;
+            }
+            if (!hymnalDbLanguagesData.getData().contains(language)) {
+                hymnalDbLanguagesData.getData().add(language);
+            }
+        }
+
+        final String languagesJson;
+        if (hymnalDbLanguagesData.getData().isEmpty()) {
+            languagesJson= null;
+        } else {
+            languagesJson = toJsonString(hymnalDbLanguagesData);
+        }
+        if (!TextUtils.equals(hymnalDbHymn.languagesJson, languagesJson)) {
+            hymnalDbHymn.languagesJson = languagesJson; // need to write this so populateRelevantForSongsNotTouched will work.
+            contentValues.put("SONG_META_DATA_LANGUAGES", TextUtils.escapeSingleQuotes(languagesJson));
+        }
+
+        // No need to add relevantJson because Hymnal.net has all the new tunes/languages populated and H4A
+        // doesn't offer anything new in that regard.
+
+        return contentValues;
+    }
+
+    /**
+     * Go through and populate the languages map again, this time taking into account both the hymnal db version and the
+     * H4a version of the song
+     */
+    private static void populateHymnalDbAndH4aLanguages(Datum datum, Set<Datum> allLanguages) {
+        if (allLanguages.contains(datum)) {
+            return;
+        }
+
+        allLanguages.add(datum);
+
+        ConvertedHymn hymn = hymnalDbHymns.get(HymnalDbKey.extractFromPath(datum.getPath()));
+        if (hymn == null) {
+            return;
+        }
+        Languages hymnalDbLanguagesData = new Gson().fromJson(hymn.languagesJson, Languages.class);
+        if (hymnalDbLanguagesData == null) {
+            return;
+        }
+
+        for (Datum language : hymnalDbLanguagesData.getData()) {
+            populateHymnalDbAndH4aLanguages(language, allLanguages);
+        }
+    }
+
+    private static void auditPopulateHymnalDbAndH4aLanguages(HymnalDbKey hymnalDbKey, Set<HymnalDbKey> allLanguages) {
         List<HymnType> relevantTypes = new ArrayList<>();
         for (HymnalDbKey key : allLanguages) {
             relevantTypes.add(key.hymnType);
@@ -1215,8 +1281,7 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
             }
 
             // NS154 is closely related to h/8330 so it is okay that ch/330 maps to both of them.
-            if (hymnalDbKey.equals(new HymnalDbKey(HymnType.CHINESE, "330", null))
-                && allLanguages.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "8330", null))
+            if (allLanguages.contains(new HymnalDbKey(HymnType.CLASSIC_HYMN, "8330", null))
                 && allLanguages.contains(new HymnalDbKey(HymnType.NEW_SONG, "154", null))) {
                 isExceptionCase = true;
             }
@@ -1226,59 +1291,9 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
                     String.format("%s has conflicting languages types: %s", hymnalDbKey, allLanguages.toString()));
             }
         }
-        /* Audit complete */
-
-        for (Datum language : allLanguagesDatum) {
-            if (hymnalDbKey.equals(HymnalDbKey.extractFromPath(language.getPath()))) {
-                continue;
-            }
-            if (!hymnalDbLanguagesData.getData().contains(language)) {
-                hymnalDbLanguagesData.getData().add(language);
-            }
-        }
-
-        final String languagesJson;
-        if (hymnalDbLanguagesData.getData().isEmpty()) {
-            languagesJson= null;
-        } else {
-            languagesJson = toJsonString(hymnalDbLanguagesData);
-        }
-        if (!TextUtils.equals(hymnalDbHymn.languagesJson, languagesJson)) {
-            contentValues.put("SONG_META_DATA_LANGUAGES", TextUtils.escapeSingleQuotes(languagesJson));
-        }
-
-        // No need to add relevantJson because Hymnal.net has all the new tunes/languages populated and H4A
-        // doesn't offer anything new in that regard.
-
-        return contentValues;
     }
 
-    /**
-     * Go through and populate the languages map again, this time taking into account both the hymnal db version and the
-     * H4a version of the song
-     */
-    private static void populateHymnalDbAndH4aLanguages(Datum datum, Set<Datum> allLanguages) {
-        if (allLanguages.contains(datum)) {
-            return;
-        }
-
-        allLanguages.add(datum);
-
-        ConvertedHymn hymn = hymnalDbHymns.get(HymnalDbKey.extractFromPath(datum.getPath()));
-        if (hymn == null) {
-            return;
-        }
-        Languages hymnalDbLanguagesData = new Gson().fromJson(hymn.languagesJson, Languages.class);
-        if (hymnalDbLanguagesData == null) {
-            return;
-        }
-
-        for (Datum language : hymnalDbLanguagesData.getData()) {
-            populateHymnalDbAndH4aLanguages(language, allLanguages);
-        }
-    }
-
-    private static ContentValues toContentValues(H4aKey key) {
+    private static ContentValues writeSong(H4aKey key) {
         ConvertedHymn hymn = h4aHymns.get(key);
 
         ContentValues contentValues = new ContentValues();
@@ -1387,11 +1402,63 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
     }
 
     /**
+     * There are songs that exist in the hymnal db but not in the H4A database (namely, ?gb=1 songs). For those, we need
+     * to go through and populate the relevant songs according to whatever was populated already
+     */
+    private static ContentValues populateRelevantForSongsNotTouched(HymnalDbKey hymnalDbKey) {
+        ConvertedHymn hymn = hymnalDbHymns.get(hymnalDbKey);
+
+        Languages hymnalDbLanguagesData = new Gson().fromJson(hymn.languagesJson, Languages.class);
+        if (hymnalDbLanguagesData == null) {
+            hymnalDbLanguagesData = new Languages();
+            hymnalDbLanguagesData.setName("Languages");
+            hymnalDbLanguagesData.setData(new ArrayList<>());
+        }
+
+        // Populate the languages map again, this time taking into account both the hymnal db version and the H4a
+        // version of the song
+        Set<Datum> allLanguagesDatum = new HashSet<>();
+        for (Datum language : hymnalDbLanguagesData.getData()) {
+            populateHymnalDbAndH4aLanguages(language, allLanguagesDatum);
+        }
+
+        Set<HymnalDbKey> allLanguages = allLanguagesDatum.stream()
+                                                         .map(datum -> HymnalDbKey.extractFromPath(datum.getPath()))
+                                                         .collect(Collectors.toSet());
+        auditPopulateHymnalDbAndH4aLanguages(hymnalDbKey, allLanguages);
+
+        boolean foundNew = false;
+        for (Datum language : allLanguagesDatum) {
+            if (hymnalDbKey.equals(HymnalDbKey.extractFromPath(language.getPath()))) {
+                continue;
+            }
+            if (!hymnalDbLanguagesData.getData().contains(language)) {
+                foundNew = true;
+                hymnalDbLanguagesData.getData().add(language);
+            }
+        }
+
+        if (!foundNew) {
+            return null;
+        }
+
+        final String languagesJson;
+        if (hymnalDbLanguagesData.getData().isEmpty()) {
+            languagesJson = null;
+        } else {
+            languagesJson = toJsonString(hymnalDbLanguagesData);
+        }
+        ContentValues contentValues = new ContentValues();
+        contentValues.put("SONG_META_DATA_LANGUAGES", TextUtils.escapeSingleQuotes(languagesJson));
+        return contentValues;
+    }
+
+    /**
      * Run through some basic tests to make sure databases have been migrated correctly.
      */
     private static void runTests(DatabaseClient hymnalClient) {
         ResultSet resultSet = hymnalClient.getDb().rawQuery(
-            "SELECT * FROM song_data WHERE (hymn_type = 'h' AND hymn_number = '43') OR (hymn_type = 'S' AND hymn_number = '28')");
+            "SELECT * FROM song_data WHERE (hymn_type = 'h' AND hymn_number = '43') OR (hymn_type = 'S' AND hymn_number = '28') OR (hymn_type = 'ch' AND hymn_number = '37')");
 
         if (resultSet == null) {
             throw new IllegalArgumentException("hymn 48 was not found in the database");
@@ -1434,6 +1501,7 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
             if (!TextUtils.isJsonValid(h43.relevantJson)) {
                 throw new IllegalArgumentException("invalid json");
             }
+            Languages h43Languages = new Gson().fromJson(h43.languagesJson, Languages.class);
 
             resultSet.next();
             ConvertedHymn s28 = new ConvertedHymn(resultSet.getString(5),
@@ -1472,12 +1540,97 @@ UPDATE SONG_DATA set SONG_META_DATA_LANGUAGES = NULL WHERE HYMN_TYPE="h" AND HYM
                 throw new IllegalArgumentException("invalid json");
             }
 
-            Languages h43Languages = new Gson().fromJson(h43.languagesJson, Languages.class);
             Languages s28Languages = new Gson().fromJson(s28.languagesJson, Languages.class);
+
+            resultSet.next();
+            ConvertedHymn ch37 = new ConvertedHymn(resultSet.getString(5),
+                                                   resultSet.getString(6),
+                                                   resultSet.getString(7),
+                                                   resultSet.getString(8),
+                                                   resultSet.getString(9),
+                                                   resultSet.getString(10),
+                                                   resultSet.getString(11),
+                                                   resultSet.getString(12),
+                                                   resultSet.getString(13),
+                                                   resultSet.getString(14),
+                                                   resultSet.getString(15),
+                                                   resultSet.getString(16),
+                                                   resultSet.getString(17),
+                                                   resultSet.getString(18),
+                                                   resultSet.getString(19),
+                                                   resultSet.getString(20));
+
+            if (!TextUtils.isJsonValid(ch37.lyricsJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(ch37.musicJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(ch37.svgJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(ch37.pdfJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(ch37.languagesJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(ch37.relevantJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            Languages ch37Languages = new Gson().fromJson(ch37.languagesJson, Languages.class);
+
+            resultSet.next();
+            ConvertedHymn ch37gb1 = new ConvertedHymn(resultSet.getString(5),
+                                                   resultSet.getString(6),
+                                                   resultSet.getString(7),
+                                                   resultSet.getString(8),
+                                                   resultSet.getString(9),
+                                                   resultSet.getString(10),
+                                                   resultSet.getString(11),
+                                                   resultSet.getString(12),
+                                                   resultSet.getString(13),
+                                                   resultSet.getString(14),
+                                                   resultSet.getString(15),
+                                                   resultSet.getString(16),
+                                                   resultSet.getString(17),
+                                                   resultSet.getString(18),
+                                                   resultSet.getString(19),
+                                                   resultSet.getString(20));
+
+            if (!TextUtils.isJsonValid(ch37gb1.lyricsJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(ch37gb1.musicJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(ch37gb1.svgJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(ch37gb1.pdfJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(ch37gb1.languagesJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            if (!TextUtils.isJsonValid(ch37gb1.relevantJson)) {
+                throw new IllegalArgumentException("invalid json");
+            }
+            Languages ch37gb1Languages = new Gson().fromJson(ch37gb1.languagesJson, Languages.class);
 
             if (h43Languages.getData().size() != s28Languages.getData().size()) {
                 throw new IllegalArgumentException("h43 and s28 has unequal languages");
             }
+
+            if (h43Languages.getData().size() != ch37Languages.getData().size()) {
+                throw new IllegalArgumentException("h43 and ch37 has unequal languages");
+            }
+
+            if (h43Languages.getData().size() != ch37gb1Languages.getData().size()) {
+                throw new IllegalArgumentException("h43 and ch37?gb=1 has unequal languages");
+            }
+
+
         } catch (SQLException | IOException e) {
             throw new IllegalArgumentException(e);
         }
