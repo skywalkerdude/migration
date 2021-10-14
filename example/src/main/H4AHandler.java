@@ -1,9 +1,300 @@
 package main;
 
+import com.google.gson.GsonBuilder;
+import models.ConvertedHymn;
+import models.H4aKey;
+import models.HymnalDbKey;
+import net.sourceforge.pinyin4j.PinyinHelper;
+import net.sourceforge.pinyin4j.format.HanyuPinyinCaseType;
+import net.sourceforge.pinyin4j.format.HanyuPinyinOutputFormat;
+import net.sourceforge.pinyin4j.format.HanyuPinyinToneType;
+import net.sourceforge.pinyin4j.format.HanyuPinyinVCharType;
+import net.sourceforge.pinyin4j.format.exception.BadHanyuPinyinOutputFormatCombination;
+import repositories.DatabaseClient;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.*;
+
+import static main.H4ADbFixer.fix;
+
 /**
  * Populates, audits, and makes a dense graph of all the songs in the hymnal db
  */
 public class H4AHandler {
+
+    private static final String H4A_DB_NAME = "h4a-piano";
+
+    /**
+     * Use a custom escape sequence, since Gson will auto-escape strings and screw everything up. Right before we save
+     * the value, we will undo the custom escape character and replace it with the standard double-quote (").
+     */
+    private static final String CUSTOM_ESCAPE = "$CUSESP$";
+
+    private final DatabaseClient client;
+    private final Map<H4aKey, ConvertedHymn> allHymns;
+
+    public static H4AHandler create(DatabaseClient client) throws SQLException, BadHanyuPinyinOutputFormatCombination {
+        return new H4AHandler(client);
+    }
+
+    private static String toJsonString(Object src) {
+        return new GsonBuilder()
+                .create().toJson(src)
+                .replace("\\\\", "\\")
+                .replace("\\\"", "\"")
+                .replace("\"[", "[")
+                .replace("]\"", "]")
+                .replace("\"{", "{")
+                .replace("}\"", "}");
+    }
+
+    public H4AHandler(DatabaseClient client) {
+        this.client = client;
+        fix(client);
+
+        allHymns = new LinkedHashMap<>();
+    }
+
+    public void handle() throws BadHanyuPinyinOutputFormatCombination, SQLException {
+        populate();
+
+        for (H4aKey h4aKey : allHymns.keySet()) {
+            handleLanguages(client, h4aKey);
+        }
+    }
+
+    private void populate() throws BadHanyuPinyinOutputFormatCombination, SQLException {
+        // Classic Hymns in English
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='E'"));
+
+        // New Songs in English
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='NS'"));
+
+        // Children
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='CH'"));
+
+        // Chinese (Traditional)
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='C'"));
+
+        // Chinese Supplement (Traditional)
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='CS'"));
+
+        // Chinese (Simplified)
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='Z'"));
+
+        // Chinese Supplement (Traditional)
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='ZS'"));
+
+        // Cebuano
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='CB'"));
+
+        // Tagalog
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='T'"));
+
+        // French
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='FR'"));
+
+        // Spanish
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='S'"));
+
+        // Korean
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='K'"));
+
+        // German
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='G'"));
+
+        // Japanese
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='J'"));
+
+        // Farci
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='F'"));
+
+        // Indonesian
+        populateH4aHymns(client.getDb().rawQuery("SELECT * FROM hymns WHERE hymn_group='I'"));
+
+        // Don't add the 'BF' songs because they are too random and haphazard to accurately categorize
+    }
+
+    private void populateH4aHymns(ResultSet resultSet)
+            throws SQLException, BadHanyuPinyinOutputFormatCombination {
+        if (resultSet == null) {
+            throw new IllegalArgumentException("h4a query returned null");
+        }
+
+        while (resultSet.next()) {
+            String id = resultSet.getString(1);
+            H4aKey key = new H4aKey(id);
+
+            String author = resultSet.getString(2);
+            if (!TextUtils.isEmpty(author) && author.equals("*")) {
+                author = "LSM";
+            }
+            String composer = resultSet.getString(3);
+            // Some composers (e.g. 1151) have "Arranged by" before the real composer. This filters out that part.
+            if (!TextUtils.isEmpty(composer)) {
+                composer = composer.replace("Arranged by ", "");
+            }
+
+            String firstStanzaLine = resultSet.getString(5);
+
+            List<String> lyrics = new ArrayList<>();
+            ResultSet stanzas = new DatabaseClient(H4A_DB_NAME, 111).getDb().rawQuery(
+                    "SELECT * FROM stanza WHERE parent_hymn='" + id + "' ORDER BY n_order");
+            if (stanzas == null) {
+                throw new IllegalArgumentException("h4a stanzas query returned null");
+            }
+            while (stanzas.next()) {
+                String stanzaNumber = stanzas.getString(2);
+                String text = stanzas.getString(3);
+                String note = stanzas.getString(4);
+
+                // creates a verse object with the stanza num and content
+                Map<String, String> verse = new HashMap<>();
+
+                if ("chorus".equals(stanzaNumber)) {
+                    verse.put(Constants.VERSE_TYPE, Constants.CHORUS);
+                } else {
+                    verse.put(Constants.VERSE_TYPE, Constants.VERSE);
+                }
+
+                List<String> verseContent = new ArrayList<>();
+                String[] lines = text.split("<br/>");
+                for (String line : lines) {
+                    if (TextUtils.isEmpty(line)) {
+                        continue;
+                    }
+                    // Use a custom escape method, since GSON will auto-escape strings and screw everything up. Right
+                    // before we save the value, we will undo the custom escape character and replace it with the
+                    // standard \".
+                    line = line.replace("\"", CUSTOM_ESCAPE + "\"");
+                    verseContent.add(line);
+                }
+
+                verse.put(Constants.VERSE_CONTENT, toJsonString(verseContent));
+                if (!TextUtils.isEmpty(note)) {
+                    verse.put(Constants.NOTE, note);
+                }
+
+                if (key.isTransliterable()) {
+                    List<String> transliteratedLines = new ArrayList<>();
+                    for (String line : verseContent) {
+                        StringBuilder transliteratedLine = new StringBuilder();
+                        char[] transliterableChars = line.toCharArray();
+                        for (char transliterableChar : transliterableChars) {
+                            HanyuPinyinOutputFormat format = new HanyuPinyinOutputFormat();
+                            format.setCaseType(HanyuPinyinCaseType.LOWERCASE);
+                            format.setToneType(HanyuPinyinToneType.WITH_TONE_MARK);
+                            format.setVCharType(HanyuPinyinVCharType.WITH_U_UNICODE);
+                            String[] transliteratedArray
+                                    = PinyinHelper.toHanyuPinyinStringArray(transliterableChar, format);
+
+                            if (transliteratedArray == null) {
+                                transliteratedLine.append(transliterableChar);
+                                continue;
+                            }
+
+                            String transliterated = transliteratedArray[0];
+                            if (transliterated.contains("none")) {
+                                throw new IllegalArgumentException(
+                                        transliterableChar + " was not able to be transliterated");
+                            }
+                            transliteratedLine.append(transliterated);
+                        }
+                        transliteratedLines.add(transliteratedLine.toString());
+                    }
+                    verse.put(Constants.VERSE_TRANSLITERATION, toJsonString(transliteratedLines));
+                }
+                lyrics.add(toJsonString(verse));
+            }
+            String lyricsJson = toJsonString(lyrics).replace(CUSTOM_ESCAPE + "\"", "\\\"");
+            if (TextUtils.isEmpty(lyricsJson)) {
+                throw new IllegalArgumentException("lyrics empty for " + key);
+            }
+
+            String musicKey = resultSet.getString(7);
+            String mainCategory = resultSet.getString(8);
+            String meter = resultSet.getString(9);
+            String subCategory = resultSet.getString(11);
+            if (!TextUtils.isEmpty(mainCategory) && !TextUtils.isEmpty(subCategory) && mainCategory.toLowerCase().equals(subCategory.toLowerCase())) {
+                subCategory = null;
+            }
+            String time = resultSet.getString(12);
+            String tune = resultSet.getString(13);
+            String parentHymnId = resultSet.getString(14);
+
+            String sheetMusicLink = resultSet.getString(15);
+            String svgJson = null;
+            if (!TextUtils.isEmpty(sheetMusicLink)) {
+                Map<String, String> leadSheet = new HashMap<>();
+                leadSheet.put(Constants.NAME, "svg");
+
+                List<Map<String, String>> leadSheetData = new ArrayList<>();
+                leadSheetData.add(Map.of("path", sheetMusicLink, "value", "Guitar"));
+                leadSheetData.add(Map.of("path", sheetMusicLink.replace("p.svg", "g.svg"), "value", "Piano"));
+
+                leadSheet.put(Constants.DATA, toJsonString(leadSheetData));
+                svgJson = new GsonBuilder().disableHtmlEscaping().create().toJson(leadSheet)
+                        .replace("\\\"", "\"")
+                        .replace("\"[", "[")
+                        .replace("]\"", "]");
+            }
+
+            String verse = resultSet.getString(16);
+            StringBuilder scriptures = new StringBuilder();
+            if (!TextUtils.isEmpty(verse)) {
+                String[] verseReferences = verse.split(",");
+                for (String verseReference : verseReferences) {
+                    if (!TextUtils.isEmpty(verseReference)) {
+                        continue;
+                    }
+                    scriptures.append(verseReference).append(";");
+                }
+            }
+            if (scriptures.length() == 0) {
+                scriptures = null;
+            }
+
+            List<H4aKey> related = new ArrayList<>();
+            if (!TextUtils.isEmpty(resultSet.getString(17))) {
+                for (String relatedSong : resultSet.getString(17).split(",")) {
+                    if (!TextUtils.isEmpty(relatedSong)) {
+                        related.add(new H4aKey(relatedSong));
+                    }
+                }
+            }
+
+            H4aKey parentHymn = null;
+            if (!TextUtils.isEmpty(parentHymnId)) {
+                parentHymn = new H4aKey(parentHymnId);
+                if (!related.contains(parentHymn)) {
+                    related.add(parentHymn);
+                }
+            }
+            allHymns.put(new H4aKey(id),
+                    new ConvertedHymn(firstStanzaLine,
+                            lyricsJson,
+                            mainCategory,
+                            subCategory,
+                            author,
+                            composer,
+                            musicKey,
+                            time,
+                            meter,
+                            scriptures != null ? scriptures.toString() : null,
+                            tune,
+                            null,
+                            svgJson,
+                            null,
+                            related,
+                            parentHymn));
+        }
+    }
+
+    private void handleLanguages(DatabaseClient client, H4aKey h4aKey) {
+        H4aLanguagesHandler languagesHandler = H4aLanguagesHandler.create(h4aKey, allHymns);
+        languagesHandler.handle();
+    }
 
 //    private static void addHymnalDbLanguages(HymnalDbKey key, Set<HymnalDbKey> allLanguages) {
 //        if (!HYMNAL_DB_HYMNS.containsKey(key)) {
@@ -18,196 +309,7 @@ public class H4AHandler {
 //            }
 //        }
 //    }
-//
-//    private static void populateH4aHymns(ResultSet resultSet)
-//            throws SQLException, BadHanyuPinyinOutputFormatCombination {
-//        if (resultSet == null) {
-//            throw new IllegalArgumentException("h4a query returned null");
-//        }
-//
-//        while (resultSet.next()) {
-//            String id = resultSet.getString(1);
-//            H4aKey key = new H4aKey(id);
-//
-//            // BF188 is a legitimate song, but its parent hymn is CH93, which doesn't exist in h4a. However, this
-//            // song is covered by the hymnal db, so we can safely ignore it.
-//            // TODO remove if we commit to skipping BF songs, keep if we don't skip BF songs.
-//            // if ("BF188".equals(id)) {
-//            //     continue;
-//            // }
-//
-//            String author = resultSet.getString(2);
-//            if (!TextUtils.isEmpty(author) && author.equals("*")) {
-//                author = "LSM";
-//            }
-//            String composer = resultSet.getString(3);
-//            // Some composers (e.g. 1151) have "Arranged by" before the real composer. This filters out that part.
-//            if (!TextUtils.isEmpty(composer)) {
-//                composer = composer.replace("Arranged by ", "");
-//            }
-//
-//            String firstStanzaLine = resultSet.getString(5);
-//
-//            List<String> lyrics = new ArrayList<>();
-//            ResultSet stanzas = new DatabaseClient(H4A_DB_NAME, 111).getDb().rawQuery(
-//                    "SELECT * FROM stanza WHERE parent_hymn='" + id + "' ORDER BY n_order");
-//            if (stanzas == null) {
-//                throw new IllegalArgumentException("h4a stanzas query returned null");
-//            }
-//            while (stanzas.next()) {
-//                String stanzaNumber = stanzas.getString(2);
-//                String text = stanzas.getString(3);
-//                String note = stanzas.getString(4);
-//
-//                // creates a verse object with the stanza num and content
-//                Map<String, String> verse = new HashMap<>();
-//
-//                if ("chorus".equals(stanzaNumber)) {
-//                    verse.put(Constants.VERSE_TYPE, Constants.CHORUS);
-//                } else {
-//                    verse.put(Constants.VERSE_TYPE, Constants.VERSE);
-//                }
-//
-//                List<String> verseContent = new ArrayList<>();
-//                String[] lines = text.split("<br/>");
-//                for (String line : lines) {
-//                    if (TextUtils.isEmpty(line)) {
-//                        continue;
-//                    }
-//                    // Use a custom escape method, since GSON will auto-escape strings and screw everything up. Right
-//                    // before we save the value, we will undo the custom escape character and replace it with the
-//                    // standard \".
-//                    line = line.replace("\"", CUSTOM_ESCAPE + "\"");
-//                    verseContent.add(line);
-//                }
-//
-//                verse.put(Constants.VERSE_CONTENT, toJsonString(verseContent));
-//                if (!TextUtils.isEmpty(note)) {
-//                    verse.put(Constants.NOTE, note);
-//                }
-//
-//                if (key.isTransliterable()) {
-//                    List<String> transliteratedLines = new ArrayList<>();
-//                    for (String line : verseContent) {
-//                        StringBuilder transliteratedLine = new StringBuilder();
-//                        char[] transliterableChars = line.toCharArray();
-//                        for (char transliterableChar : transliterableChars) {
-//                            HanyuPinyinOutputFormat format = new HanyuPinyinOutputFormat();
-//                            format.setCaseType(HanyuPinyinCaseType.LOWERCASE);
-//                            format.setToneType(HanyuPinyinToneType.WITH_TONE_MARK);
-//                            format.setVCharType(HanyuPinyinVCharType.WITH_U_UNICODE);
-//                            String[] transliteratedArray
-//                                    = PinyinHelper.toHanyuPinyinStringArray(transliterableChar, format);
-//
-//                            if (transliteratedArray == null) {
-//                                transliteratedLine.append(transliterableChar);
-//                                continue;
-//                            }
-//
-//                            String transliterated = transliteratedArray[0];
-//                            if (transliterated.contains("none")) {
-//                                throw new IllegalArgumentException(
-//                                        transliterableChar + " was not able to be transliterated");
-//                            }
-//                            transliteratedLine.append(transliterated);
-//                        }
-//                        transliteratedLines.add(transliteratedLine.toString());
-//                    }
-//
-//                    verse.put(Constants.VERSE_TRANSLITERATION, toJsonString(transliteratedLines));
-//                }
-//
-//                lyrics.add(toJsonString(verse));
-//            }
-//            String lyricsJson = toJsonString(lyrics).replace(CUSTOM_ESCAPE + "\"", "\\\"");
-//            if (TextUtils.isEmpty(lyricsJson)) {
-//                throw new IllegalArgumentException("lyrics empty for " + key);
-//            }
-//
-//            String musicKey = resultSet.getString(7);
-//            String mainCategory = resultSet.getString(8);
-//            String meter = resultSet.getString(9);
-//            String subCategory = resultSet.getString(11);
-//            if (!TextUtils.isEmpty(mainCategory) && !TextUtils.isEmpty(subCategory) && mainCategory.toLowerCase().equals(subCategory.toLowerCase())) {
-//                subCategory = null;
-//            }
-//            String time = resultSet.getString(12);
-//            String tune = resultSet.getString(13);
-//            String parentHymnId = resultSet.getString(14);
-//
-//            // Weird mapping in h4a where G10001 maps to the Chinese version of "God's eternal economy" instead of the English.
-//            if (id.equals("G10001")) {
-//                parentHymnId = "NS180";
-//            }
-//
-//            String sheetMusicLink = resultSet.getString(15);
-//            String svgJson = null;
-//            if (!TextUtils.isEmpty(sheetMusicLink)) {
-//                Map<String, String> leadSheet = new HashMap<>();
-//                leadSheet.put(Constants.NAME, "svg");
-//
-//                List<Map<String, String>> leadSheetData = new ArrayList<>();
-//                leadSheetData.add(Map.of("path", sheetMusicLink, "value", "Guitar"));
-//                leadSheetData.add(Map.of("path", sheetMusicLink.replace("p.svg", "g.svg"), "value", "Piano"));
-//
-//                leadSheet.put(Constants.DATA, toJsonString(leadSheetData));
-//                svgJson = new GsonBuilder().disableHtmlEscaping().create().toJson(leadSheet)
-//                        .replace("\\\"", "\"")
-//                        .replace("\"[", "[")
-//                        .replace("]\"", "]");
-//            }
-//
-//            String verse = resultSet.getString(16);
-//            StringBuilder scriptures = new StringBuilder();
-//            if (!TextUtils.isEmpty(verse)) {
-//                String[] verseReferences = verse.split(",");
-//                for (String verseReference : verseReferences) {
-//                    if (!TextUtils.isEmpty(verseReference)) {
-//                        continue;
-//                    }
-//                    scriptures.append(verseReference).append(";");
-//                }
-//            }
-//            if (scriptures.length() == 0) {
-//                scriptures = null;
-//            }
-//
-//            List<H4aKey> related = new ArrayList<>();
-//            if (!TextUtils.isEmpty(resultSet.getString(17))) {
-//                for (String relatedSong : resultSet.getString(17).split(",")) {
-//                    if (!TextUtils.isEmpty(relatedSong)) {
-//                        related.add(new H4aKey(relatedSong));
-//                    }
-//                }
-//            }
-//
-//            H4aKey parentHymn = null;
-//            if (!TextUtils.isEmpty(parentHymnId)) {
-//                parentHymn = new H4aKey(parentHymnId);
-//                if (!related.contains(parentHymn)) {
-//                    related.add(parentHymn);
-//                }
-//            }
-//
-//            h4aHymns.put(new H4aKey(id),
-//                    new ConvertedHymn(firstStanzaLine,
-//                            lyricsJson,
-//                            mainCategory,
-//                            subCategory,
-//                            author,
-//                            composer,
-//                            musicKey,
-//                            time,
-//                            meter,
-//                            scriptures != null ? scriptures.toString() : null,
-//                            tune,
-//                            null,
-//                            svgJson,
-//                            null,
-//                            related,
-//                            parentHymn));
-//        }
-//    }
+
 ///*
 //    private static void populateH4aLanguages(H4aKey h4aKey) {
 //        Set<H4aKey> allLanguages = new HashSet<>();

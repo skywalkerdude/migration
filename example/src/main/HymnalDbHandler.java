@@ -10,7 +10,7 @@ import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import static main.HymnalDbFix.fixHymnalDb;
+import static main.HymnalDbFixer.fix;
 
 /**
  * Populates, audits, and makes a dense graph of all the songs in the hymnal db
@@ -26,9 +26,8 @@ public class HymnalDbHandler {
 
     public HymnalDbHandler(DatabaseClient client) throws SQLException {
         this.client = client;
-        fixHymnalDb(client);
+        fix(client);
 
-        // Populate HYMNAL_DB_HYMNS
         Map<HymnalDbKey, ConvertedHymn> allHymns = new LinkedHashMap<>();
         ResultSet resultSet = client.getDb().rawQuery("SELECT * FROM song_data");
         if (resultSet == null) {

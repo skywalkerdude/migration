@@ -15,15 +15,9 @@ public final class Main {
     /**
      * Perform a dry run without actually writing anything to the database.
      */
-    public static final boolean DRY_RUN = false;
+    public static final boolean DRY_RUN = true;
 
     private static final boolean DEBUG_LOG = false;
-
-    /**
-     * Use a custom escape sequence, since Gson will auto-escape strings and screw everything up. Right before we save
-     * the value, we will undo the custom escape character and replace it with the standard \".
-     */
-    private static final String CUSTOM_ESCAPE = "$CUSESP$";
 
     public static void LOG(String logStatement) {
         if (DEBUG_LOG) {
@@ -36,24 +30,16 @@ public final class Main {
 
     private static Map<H4aKey, ConvertedHymn> h4aHymns = new HashMap<>();
 
-    private static String toJsonString(Object src) {
-        return
-                new GsonBuilder()
-                        .create().toJson(src)
-                        .replace("\\\\", "\\")
-                        .replace("\\\"", "\"")
-                        .replace("\"[", "[")
-                        .replace("]\"", "]")
-                        .replace("\"{", "{")
-                        .replace("}\"", "}");
-    }
-
     public static void main(String[] args) throws SQLException, BadHanyuPinyinOutputFormatCombination {
         DatabaseClient hymnalClient = new DatabaseClient(HYMNAL_DB_NAME, 15);
-        DatabaseClient h4aClient = new DatabaseClient(H4A_DB_NAME, 111);
+        HymnalDbHandler hymnalDbHandler = HymnalDbHandler.create(hymnalClient);
+        hymnalDbHandler.handle();
+        hymnalClient.close();
 
-        HymnalDbHandler handler = HymnalDbHandler.create(hymnalClient);
-        handler.handle();
+        DatabaseClient h4aClient = new DatabaseClient(H4A_DB_NAME, 111);
+        H4AHandler h4AHandler = H4AHandler.create(h4aClient);
+        h4AHandler.handle();
+        h4aClient.close();
 
 //        ConvertedHymn hymn = hymnalDbHymns.get(hymnalDbKey);
 //        for (H4aKey relevant : hymn.languages) {
