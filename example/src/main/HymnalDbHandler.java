@@ -18,16 +18,25 @@ import static main.HymnalDbFixer.fix;
 public class HymnalDbHandler {
 
     private final DatabaseClient client;
-    private final Map<HymnalDbKey, ConvertedHymn> allHymns;
 
     public static HymnalDbHandler create(DatabaseClient client) throws SQLException {
         return new HymnalDbHandler(client);
     }
 
-    public HymnalDbHandler(DatabaseClient client) throws SQLException {
+    public HymnalDbHandler(DatabaseClient client) {
         this.client = client;
-        fix(client);
+    }
 
+    public void handle() throws SQLException {
+        fix(client);
+        Map<HymnalDbKey, ConvertedHymn> allHymns = populateHymns();
+        for (HymnalDbKey hymnalDbKey : allHymns.keySet()) {
+            handleLanguages(client, hymnalDbKey, allHymns);
+            handleRelevant(client, hymnalDbKey, allHymns);
+        }
+    }
+
+    private Map<HymnalDbKey, ConvertedHymn> populateHymns() throws SQLException {
         Map<HymnalDbKey, ConvertedHymn> allHymns = new LinkedHashMap<>();
         ResultSet resultSet = client.getDb().rawQuery("SELECT * FROM song_data");
         if (resultSet == null) {
@@ -55,22 +64,15 @@ public class HymnalDbHandler {
                             resultSet.getString(19),
                             resultSet.getString(20)));
         }
-        this.allHymns = Map.copyOf(allHymns);
+        return allHymns;
     }
 
-    public void handle() {
-        for (HymnalDbKey hymnalDbKey : allHymns.keySet()) {
-            handleLanguages(client, hymnalDbKey);
-            handleRelevant(client, hymnalDbKey);
-        }
-    }
-
-    private void handleLanguages(DatabaseClient client, HymnalDbKey hymnalDbKey) {
+    private void handleLanguages(DatabaseClient client, HymnalDbKey hymnalDbKey, Map<HymnalDbKey, ConvertedHymn> allHymns) {
         HymnalDbLanguagesHandler languagesHandler = HymnalDbLanguagesHandler.create(hymnalDbKey, allHymns, client);
         languagesHandler.handle();
     }
 
-    private void handleRelevant(DatabaseClient client, HymnalDbKey hymnalDbKey) {
+    private void handleRelevant(DatabaseClient client, HymnalDbKey hymnalDbKey, Map<HymnalDbKey, ConvertedHymn> allHymns) {
         HymnalDbRelevantHandler relevantHandler = HymnalDbRelevantHandler.create(hymnalDbKey, allHymns, client);
         relevantHandler.handle();
     }
