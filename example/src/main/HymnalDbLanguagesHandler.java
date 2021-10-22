@@ -5,11 +5,13 @@ import com.tylersuehr.sql.ContentValues;
 import models.*;
 import repositories.DatabaseClient;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.stream.Collectors;
 
 import static main.Main.DRY_RUN;
-import static main.Main.LOG;
+import static main.Main.LOGGER;
 
 /**
  * Populates, audits, and makes a dense graph of all the language references in the hymnal db
@@ -27,6 +29,11 @@ public class HymnalDbLanguagesHandler {
                 new HymnalDbKey(HymnType.TAGALOG, "1353", null),
                 new HymnalDbKey(HymnType.CHINESE, "476", null),
                 new HymnalDbKey(HymnType.CHINESE, "476", "?gb=1")));
+
+        // Both h/8330 and ns/154 are valid translations of the Chinese song ch/330.
+        HYMNAL_DB_LANGUAGES_EXCEPTIONS.add(Set.of(
+                new HymnalDbKey(HymnType.CLASSIC_HYMN, "8330", null),
+                new HymnalDbKey(HymnType.NEW_SONG, "154", null)));
 
         // Both ns/19 and ns/474 are valid translations of the Chinese song ts/428.
         HYMNAL_DB_LANGUAGES_EXCEPTIONS.add(Set.of(
@@ -57,56 +64,49 @@ public class HymnalDbLanguagesHandler {
                 new HymnalDbKey(HymnType.TAGALOG, "1353", null),
                 new HymnalDbKey(HymnType.CHINESE, "476", null),
                 new HymnalDbKey(HymnType.CHINESE, "476", "?gb=1")));
+
+        // T437 is from H4A, and seems like also a valid translation of h/437 as well as ht/c333
+        HYMNAL_DB_LANGUAGES_EXCEPTIONS.add(Set.of(
+                new HymnalDbKey(HymnType.TAGALOG, "c333", null),
+                new HymnalDbKey(HymnType.TAGALOG, "437", null)));
     }
 
-    private final HymnalDbKey currentKey;
-    private final Set<Reference> allLanguageRefs;
-    private final Map<HymnalDbKey, ConvertedHymn> allHymns;
     private final DatabaseClient client;
+    private final Map<HymnalDbKey, ConvertedHymn> allHymns;
+    private final Set<Set<Reference>> allReferenceSets;
 
-    public static HymnalDbLanguagesHandler create(HymnalDbKey currentKey, Map<HymnalDbKey, ConvertedHymn> allHymns,
-                                                  DatabaseClient client) {
-        return new HymnalDbLanguagesHandler(currentKey, allHymns, client);
+    public static HymnalDbLanguagesHandler create(DatabaseClient client, Map<HymnalDbKey, ConvertedHymn> allHymns) {
+        return new HymnalDbLanguagesHandler(client, allHymns);
     }
 
-    private HymnalDbLanguagesHandler(HymnalDbKey currentKey, Map<HymnalDbKey, ConvertedHymn> allHymns,
-                                     DatabaseClient client) {
-        this.currentKey = currentKey;
+    private HymnalDbLanguagesHandler(DatabaseClient client, Map<HymnalDbKey, ConvertedHymn> allHymns) {
         this.allHymns = allHymns;
-        this.allLanguageRefs = new LinkedHashSet<>();
         this.client = client;
+        this.allReferenceSets = new LinkedHashSet<>();
     }
 
-    public void handle() {
-        List<Reference> references = extractLanguageReferences(currentKey);
+    public void handle(HymnalDbKey currentKey) {
+        Set<Reference> allLanguageRefs = new LinkedHashSet<>();
+        Set<Reference> references = allHymns.get(currentKey).languageReferences;
         assert references != null;
-        for (Reference reference : references) {
-            populate(reference);
+        references.forEach(reference -> populate(reference, allLanguageRefs));
+
+        // No references to add
+        if (allLanguageRefs.isEmpty()) {
+            return;
         }
 
-        // Add current hymn to the set of all references, so we can properly audit the entire graph
-        Set<HymnalDbKey> hymnsToAudit =
-                allLanguageRefs
-                        .stream()
-                        .map(reference -> reference.key)
-                        .collect(Collectors.toSet());
-        hymnsToAudit.add(currentKey);
-        audit(hymnsToAudit);
-
-        write();
+        addUnreferencedSongs(currentKey, allLanguageRefs);
+        addToGlobalSet(allLanguageRefs);
     }
 
     /**
-     * Traverses the entire language graph and lists all songs found during traversal.
+     * Traverses the entire language graph and adds all songs found during traversal into allLanguageRefs.
      */
-    private void populate(Reference languageReference) {
+    private void populate(Reference languageReference, Set<Reference> allLanguageRefs) {
         HymnalDbKey key = languageReference.key;
         if (!allHymns.containsKey(key)) {
             throw new IllegalArgumentException(String.format("%s not found in hymnal db", key));
-        }
-        // Don't add current hymn into language map.
-        if (currentKey.equals(key)) {
-            return;
         }
         Set<HymnalDbKey> languageKeys =
                 allLanguageRefs
@@ -118,37 +118,84 @@ public class HymnalDbLanguagesHandler {
         }
 
         allLanguageRefs.add(Reference.create(languageReference.text, key));
+        allHymns.get(key).languageReferences.forEach(reference -> populate(reference, allLanguageRefs));
+    }
 
-        List<Reference> references = extractLanguageReferences(key);
-        for (Reference reference : references) {
-            populate(reference);
+    /**
+     * We hope that most songs are some kind of circular reference (i.e. h/1 -> cb/1 -> h/1). This way, we get the text
+     * of the reference for free. However, there are some cases where a song references a group of songs, but there is
+     * no reference to it. In those cases, we will need to infer the text from the type of the hymn.
+     */
+    private void addUnreferencedSongs(HymnalDbKey currentKey, Set<Reference> allLanguageRefs) {
+        Set<HymnalDbKey> languages = allLanguageRefs.stream()
+                                                    .map(reference -> reference.key)
+                                                    .collect(Collectors.toUnmodifiableSet());
+        if (!languages.contains(currentKey)) {
+            // Infer reference from type.
+            switch (currentKey.hymnType) {
+                case GERMAN:
+                    allLanguageRefs.add(Reference.create("German", currentKey));
+                    return;
+                case FRENCH:
+                    allLanguageRefs.add(Reference.create("French", currentKey));
+                    return;
+                case NEW_TUNE:
+                    // Fall Through
+                case CLASSIC_HYMN:
+                    // It's a new or alternate tune that references the translation of the original tune. For now, we
+                    // are NOT supporting such linkages since the languages they refer to likely is not going to be
+                    // adhering to that new tune (sheet music, mp3, etc.). So in that case, just ignore it and leave the
+                    // hymn as unreferenced.
+                    if (currentKey.hymnNumber.matches("\\d+b")) {
+                        return;
+                    }
+                default:
+                    throw new IllegalArgumentException("Unable to infer text for unreferenced hymn: " + currentKey + "-" + allLanguageRefs);
+            }
         }
     }
 
     /**
-     * Looks up the hymn and extracts the language references from that hymn.
+     * Writes the language refs to the global set of all languages.
      */
-    private List<Reference> extractLanguageReferences(HymnalDbKey key) {
-        ConvertedHymn currentHymn = allHymns.get(key);
-        if (!allHymns.containsKey(key)) {
-            throw new IllegalArgumentException(String.format("%s not found in hymnal db", key));
+    private void addToGlobalSet(Set<Reference> languageRefs) {
+        Set<Set<Reference>> matched = new LinkedHashSet<>();
+        for (Reference reference : languageRefs) {
+            for (Set<Reference> references : allReferenceSets) {
+                if (references.contains(reference)) {
+                    matched.add(references);
+                }
+            }
         }
-
-        Languages languages = new Gson().fromJson(currentHymn.languagesJson, Languages.class);
-        if (languages == null) {
-            return new ArrayList<>();
+        // Did not match anything in the current global set, so we should add it.
+        if (matched.isEmpty()) {
+            allReferenceSets.add(languageRefs);
+        } else if (matched.size() == 1) {
+            matched.stream().findFirst().get().addAll(languageRefs);
+        } else {
+            // Each language reference should be in its unique set. If there are multiple matching sets, then something
+            // is wrong.
+            throw new IllegalArgumentException(languageRefs + " was not in a unique set, but was in " + matched);
         }
-        return languages
-                .getData().stream()
-                .map(datum ->
-                        Reference.create(datum.getValue(), HymnalDbKey.extractFromPath(datum.getPath())))
-                .collect(Collectors.toList());
     }
 
     /**
-     * Audit set of {@link Reference}s to see if there are conflicting types.
+     * Audits {@link #allReferenceSets} to see if there are conflicting sets.
      */
-    private void audit(Set<HymnalDbKey> setToAudit) {
+    public void auditGlobalLanguagesSet() {
+        for (Set<Reference> references : allReferenceSets) {
+            auditLanguageSet(references.stream().map(reference -> reference.key).collect(Collectors.toSet()));
+        }
+    }
+
+    /**
+     * Audit set of {@link HymnalDbKey}s to see if there are conflicting types.
+     */
+    private void auditLanguageSet(Set<HymnalDbKey> setToAudit) {
+        if (setToAudit.size() == 1) {
+            throw new IllegalArgumentException("Language set with only 1 key is a dangling reference, which needs fixing: " + setToAudit);
+        }
+
         // Extract the hymn types for audit.
         List<HymnType> hymnTypes = setToAudit.stream().map(language -> language.hymnType).collect(Collectors.toList());
 
@@ -175,7 +222,7 @@ public class HymnalDbLanguagesHandler {
                     if (!setToAudit.removeAll(exception)) {
                         throw new IllegalArgumentException(exception + " was unable to be removed from " + setToAudit);
                     }
-                    audit(setToAudit);
+                    auditLanguageSet(setToAudit);
                     return;
                 }
             }
@@ -188,55 +235,136 @@ public class HymnalDbLanguagesHandler {
 
         // Verify that incompatible hymn types don't appear together the languages list.
         if ((hymnTypes.contains(HymnType.CLASSIC_HYMN) && hymnTypes.contains(HymnType.NEW_SONG))
-                || (hymnTypes.contains(HymnType.CLASSIC_HYMN) && hymnTypes.contains(HymnType.CHILDREN_SONG))
-                || hymnTypes.contains(HymnType.CHILDREN_SONG) && hymnTypes.contains(HymnType.NEW_SONG)
-                || hymnTypes.contains(HymnType.CHINESE) && hymnTypes.contains(HymnType.CHINESE_SUPPLEMENT)) {
+            || (hymnTypes.contains(HymnType.CLASSIC_HYMN) && hymnTypes.contains(HymnType.CHILDREN_SONG))
+            || hymnTypes.contains(HymnType.CHILDREN_SONG) && hymnTypes.contains(HymnType.NEW_SONG)
+            || hymnTypes.contains(HymnType.CHINESE) && hymnTypes.contains(HymnType.CHINESE_SUPPLEMENT)) {
             throw new IllegalArgumentException(
                     String.format("%s has incompatible languages types", setToAudit));
         }
     }
 
     /**
-     * Writes the set of {@link #allLanguageRefs} into the database entry for {@link #currentKey}.
+     * Augments the {@link ConvertedHymn#languagesJson} field if there are references that should be added from
+     * {@link #allReferenceSets}
      */
-    private void write() {
-        ConvertedHymn hymn = allHymns.get(currentKey);
-        if (hymn == null) {
-            throw new IllegalArgumentException("hymnalDbKey " + currentKey + " was not found");
-        }
+    public void writeLanguageReferences() throws SQLException {
+        int timesWritten = 0;
+        int timesInserted = 0;
+        for (Set<Reference> currentSet : allReferenceSets) {
+            for (Reference currentReference : currentSet) {
+                HymnalDbKey currentKey = currentReference.key;
+                ConvertedHymn hymn = allHymns.get(currentKey);
+                if (hymn == null) {
+                    throw new IllegalArgumentException("hymnalDbKey " + currentKey + " was not found");
+                }
 
-        Languages languages = new Gson().fromJson(hymn.languagesJson, Languages.class);
-        // If one is empty and the other is not, then something weird happened during processing.
-        if (languages == null != allLanguageRefs.isEmpty()) {
-            throw new IllegalArgumentException("mismatch in language availability. hymn.languages: " + languages + " allLanguageRefs: " + allLanguageRefs);
-        }
+                Set<Reference> languageKeys = hymn.extractLanguageReferences();
 
-        if (languages == null) {
-            return;
-        }
+                Set<Reference> otherLanguages =
+                        currentSet.stream()
+                                  // Don't add itself into the languages set
+                                  .filter(reference -> !reference.equals(currentReference))
+                                  .collect(Collectors.toSet());
 
-        List<Reference> languageKeys =
-                languages.getData()
-                        .stream()
-                        .map(datum -> Reference.create(datum.getValue(), HymnalDbKey.extractFromPath(datum.getPath())))
-                        .collect(Collectors.toList());
-        //noinspection SlowAbstractSetRemoveAll
-        if (!allLanguageRefs.removeAll(languageKeys)) {
-            throw new IllegalArgumentException(currentKey + ": " + allLanguageRefs + " did not include all of " + languageKeys);
-        }
-        for (Reference reference : allLanguageRefs) {
-            HymnalDbKey key = reference.key;
-            Datum datum = new Datum();
-            datum.setPath("/en/hymn/" + key.hymnType.hymnalDb + "/" + key.hymnNumber + (TextUtils.isEmpty(key.queryParams) ? "" : key.queryParams));
-            datum.setValue(reference.text);
-            languages.getData().add(datum);
-            LOG("adding " + datum + " to " + currentKey);
-            if (!DRY_RUN) {
-                System.out.println("Writing " + datum + " to " + currentKey + " in the database");
-                ContentValues contentValues = new ContentValues();
-                contentValues.put("SONG_META_DATA_LANGUAGES", new Gson().toJson(languages));
-                client.getDb().update("SONG_DATA", contentValues, "HYMN_TYPE = '" + currentKey.hymnType.hymnalDb + "' AND HYMN_NUMBER ='" + currentKey.hymnNumber + "' AND QUERY_PARAMS = '" + currentKey.queryParams + "'");
+                if (!otherLanguages.containsAll(languageKeys)) {
+                    // If the set of all languages doesn't contain the existing languages, then something wemnt wrong.
+                    throw new IllegalArgumentException(currentKey + ": " + otherLanguages + " did not include all of " + languageKeys);
+                } else {
+                    // Remove keys that are already in the current languages json
+                    otherLanguages.removeAll(languageKeys);
+                }
+
+                if (otherLanguages.isEmpty()) {
+                    LOGGER.finer("No new languages to add for " + currentKey);
+                    continue;
+                }
+
+                // Add new languages into the languages json
+                Languages languages = new Gson().fromJson(hymn.languagesJson, Languages.class);
+                if (languages == null) {
+                    languages = new Languages();
+                    languages.setName("Languages");
+                    List<Datum> data = new ArrayList<>();
+                    languages.setData(data);
+                    for (Reference language : languageKeys) {
+                        // If the language json is null, then we need to create a new Languages object and populate it
+                        // with what is existing in the languageKeys.
+                        HymnalDbKey keyToAdd = language.key;
+                        String textToAdd = language.text;
+                        Reference referenceToAdd = Reference.create(textToAdd, keyToAdd);
+                        hymn.languageReferences.add(referenceToAdd);
+                        Datum datum = new Datum();
+                        datum.setPath("/en/hymn/" + keyToAdd.hymnType.hymnalDb + "/" + keyToAdd.hymnNumber + (TextUtils.isEmpty(keyToAdd.queryParams) ? "" : keyToAdd.queryParams));
+                        datum.setValue(textToAdd);
+                        languages.getData().add(datum);
+                    }
+                }
+                for (Reference referenceToAdd : otherLanguages) {
+                    HymnalDbKey keyToAdd = referenceToAdd.key;
+                    String textToAdd = referenceToAdd.text;
+                    hymn.languageReferences.add(referenceToAdd);
+                    LOGGER.fine("Will add " + referenceToAdd + " to " + currentReference.key);
+                    Datum datum = new Datum();
+                    datum.setPath("/en/hymn/" + keyToAdd.hymnType.hymnalDb + "/" + keyToAdd.hymnNumber + (TextUtils.isEmpty(keyToAdd.queryParams) ? "" : keyToAdd.queryParams));
+                    datum.setValue(textToAdd);
+                    languages.getData().add(datum);
+                }
+
+                // Write to database
+                String selection = "HYMN_TYPE = '" + currentKey.hymnType.hymnalDb + "' AND HYMN_NUMBER ='" + currentKey.hymnNumber + "' AND QUERY_PARAMS = '" + currentKey.queryParams + "'";
+                ResultSet resultSet = client.getDb().query("SONG_DATA", selection, null, null);
+                if (resultSet == null || !resultSet.next()) {
+                    LOGGER.finer("Created new song: " + currentKey + " - " + hymn);
+                    ContentValues contentValues = writeSong(currentKey, languages);
+                    if (!DRY_RUN) {
+                        LOGGER.info("Inserting " + currentKey);
+                        timesInserted++;
+                        client.getDb().insert("song_data", contentValues);
+                    }
+                } else {
+                    String languageJson = new Gson().toJson(languages);
+                    ContentValues contentValues = new ContentValues();
+                    contentValues.put("SONG_META_DATA_LANGUAGES", languageJson);
+                    if (!DRY_RUN) {
+                        LOGGER.info("Writing to " + currentKey + " languageJson: " + languageJson);
+                        timesWritten++;
+                        client.getDb().update("SONG_DATA", contentValues, selection);
+                    }
+                }
             }
         }
+        if (!DRY_RUN) {
+            System.out.println("Rewrote " + timesWritten + " languageJsons");
+            System.out.println("Inserted " + timesInserted + " new songs");
+        }
+    }
+
+    private ContentValues writeSong(HymnalDbKey key, Languages languages) {
+        ConvertedHymn hymn = allHymns.get(key);
+
+        ContentValues contentValues = new ContentValues();
+        contentValues.put("HYMN_TYPE", key.hymnType.hymnalDb);
+        contentValues.put("HYMN_NUMBER", key.hymnNumber);
+        contentValues.put("QUERY_PARAMS", key.queryParams);
+        contentValues.put("SONG_TITLE", TextUtils.escapeSingleQuotes(hymn.title));
+        contentValues.put("SONG_LYRICS", TextUtils.escapeSingleQuotes(hymn.lyricsJson));
+        contentValues.put("SONG_META_DATA_CATEGORY", TextUtils.escapeSingleQuotes(hymn.category));
+        contentValues.put("SONG_META_DATA_SUBCATEGORY", TextUtils.escapeSingleQuotes(hymn.subCategory));
+        contentValues.put("SONG_META_DATA_AUTHOR", TextUtils.escapeSingleQuotes(hymn.author));
+        contentValues.put("SONG_META_DATA_COMPOSER", TextUtils.escapeSingleQuotes(hymn.composer));
+        contentValues.put("SONG_META_DATA_KEY", TextUtils.escapeSingleQuotes(hymn.key));
+        contentValues.put("SONG_META_DATA_TIME", TextUtils.escapeSingleQuotes(hymn.time));
+        contentValues.put("SONG_META_DATA_METER", TextUtils.escapeSingleQuotes(hymn.meter));
+        contentValues.put("SONG_META_DATA_SCRIPTURES", TextUtils.escapeSingleQuotes(hymn.scriptures));
+        contentValues.put("SONG_META_DATA_HYMN_CODE", TextUtils.escapeSingleQuotes(hymn.hymnCode));
+        contentValues.put("SONG_META_DATA_MUSIC", TextUtils.escapeSingleQuotes(hymn.musicJson));
+        contentValues.put("SONG_META_DATA_SVG_SHEET_MUSIC", TextUtils.escapeSingleQuotes(hymn.svgJson));
+        contentValues.put("SONG_META_DATA_PDF_SHEET_MUSIC", TextUtils.escapeSingleQuotes(hymn.pdfJson));
+
+        if (!languages.getData().isEmpty()) {
+            String languagesJson = new Gson().toJson(languages);
+            contentValues.put("SONG_META_DATA_LANGUAGES", TextUtils.escapeSingleQuotes(languagesJson));
+        }
+        return contentValues;
     }
 }

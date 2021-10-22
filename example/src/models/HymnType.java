@@ -22,6 +22,11 @@ public enum HymnType {
     SPANISH_MISTYPED("S", "ES"),
     KOREAN("K", "K"),
     JAPANESE("J", "J"),
+    // H4a db uses "Z" to indicate simplified Chinese, while hymnaldb uses query parameters (i.e. "gb=1")
+    CHINESE_SIMPLIFIED(null, "Z"),
+    CHINESE_SIMPLIFIED_SUPPLEMENT(null, "ZS"),
+    FARSI("F", "F"),
+    INDONESIAN("I", "I"),
     // Not sure what ths "R" category is, but it doesn't exist in the database
     UNKNOWN(null, "R");
 

@@ -1,7 +1,5 @@
 package models;
 
-import java.util.Objects;
-
 /**
  * Models a reference that includes the text (e.g. 'English', 'Cebuano', 'New Tune', 'Alternate Tune', etc.) and the key
  * to the hymn it references
@@ -20,22 +18,30 @@ public class Reference {
         this.key = key;
     }
 
+    /**
+     * Only use {@link #key} as part of equals and hashCode() because we don't want two references that point to the
+     * same destination as part of a single song.
+     */
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof Reference)) return false;
         Reference that = (Reference) o;
-        return text.equals(that.text) && key.equals(that.key);
+        return key.equals(that.key);
     }
 
+    /**
+     * Only use {@link #key} as part of equals and hashCode() because we don't want two references that point to the
+     * same destination as part of a single song.
+     */
     @Override
     public int hashCode() {
-        return Objects.hash(text, key);
+        return key.hashCode();
     }
 
     @Override
     public String toString() {
-        return "LanguageReference{" +
+        return "Reference{" +
                 "text='" + text + '\'' +
                 ", key=" + key +
                 '}';

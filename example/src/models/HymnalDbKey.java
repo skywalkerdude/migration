@@ -1,5 +1,7 @@
 package models;
 
+import main.TextUtils;
+
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -12,6 +14,9 @@ public class HymnalDbKey {
     public final String queryParams;
 
     public HymnalDbKey(HymnType hymnType, String hymnNumber, String queryParams) {
+        assert hymnType != null;
+        assert !TextUtils.isEmpty(hymnNumber);
+
         this.hymnType = hymnType;
         this.hymnNumber = hymnNumber;
         this.queryParams = queryParams != null ? queryParams : "";
@@ -22,16 +27,31 @@ public class HymnalDbKey {
             return null;
         }
 
+        // NS 10XX songs are Howard Higashi songs in the H4A db
         if (hymnType == HymnType.HOWARD_HIGASHI) {
+            // There are 3 special translations of Howard Higashi songs in the hymnal db that require special treatment
             if (hymnNumber.equals("12f")) {
                 return new H4aKey(HymnType.NEW_SONG.h4a + "1012f");
             }
             if (hymnNumber.equals("12s")) {
                 return new H4aKey(HymnType.NEW_SONG.h4a + "1012s");
             }
+            if (hymnNumber.equals("41c")) {
+                return new H4aKey(HymnType.NEW_SONG.h4a + "1041c");
+            }
             return new H4aKey(HymnType.NEW_SONG.h4a + (Integer.parseInt(hymnNumber) + 1000));
         }
-
+        if ("?gb=1".equals(queryParams)) {
+            if (hymnType == HymnType.CHINESE) {
+                return new H4aKey(HymnType.CHINESE_SIMPLIFIED.h4a + hymnNumber);
+            } else if (hymnType == HymnType.CHINESE_SUPPLEMENT) {
+                return new H4aKey(HymnType.CHINESE_SIMPLIFIED_SUPPLEMENT.h4a + hymnNumber);
+            } else if (hymnType == HymnType.CLASSIC_HYMN || hymnType == HymnType.NEW_SONG) { // ns/102c or h/1313c
+                return new H4aKey(hymnType.h4a + hymnNumber);
+            } else {
+                throw new IllegalArgumentException("Non-chinese song has query params of \"?gb=1\": " + this);
+            }
+        }
         return new H4aKey(hymnType.h4a + hymnNumber);
     }
 

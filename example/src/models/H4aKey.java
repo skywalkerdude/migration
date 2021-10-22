@@ -20,13 +20,22 @@ public class H4aKey {
     }
 
     public HymnalDbKey toHymnalDbKey() {
-        if (isLongBeachSong()) {
+        // Howard Higashi songs in H4a are NS10XX
+        if (isHowardHigashi()) {
             return new HymnalDbKey(HymnType.HOWARD_HIGASHI, Integer.toString(Integer.parseInt(number()) - 1000), null);
+        }
+
+        // Convert Chinese Simplified from "Z" and "ZS" to the appropriate hymnal db version, which is with "?gb=1" query params
+        if (type() == HymnType.CHINESE_SIMPLIFIED) {
+            return new HymnalDbKey(HymnType.CHINESE, number(), "?gb=1");
+        }
+        if (type() == HymnType.CHINESE_SIMPLIFIED_SUPPLEMENT) {
+            return new HymnalDbKey(HymnType.CHINESE_SUPPLEMENT, number(), "?gb=1");
         }
         return new HymnalDbKey(type(), number(), null);
     }
 
-    private boolean isLongBeachSong() {
+    private boolean isHowardHigashi() {
         if (type() == HymnType.NEW_SONG && TextUtils.isNumeric(number())) {
             return Integer.parseInt(number()) >= 1001 && Integer.parseInt(number()) <= 1087;
         }
@@ -34,8 +43,8 @@ public class H4aKey {
     }
 
     public boolean isSameType(H4aKey h4aKey) {
-        if (isLongBeachSong()) {
-            return h4aKey.isLongBeachSong();
+        if (isHowardHigashi()) {
+            return h4aKey.isHowardHigashi();
         }
         return type().equals(h4aKey.type());
     }
@@ -45,7 +54,6 @@ public class H4aKey {
         if (!matcher.find()) {
             throw new IllegalArgumentException("Unable to extract type from " + id);
         }
-
         return HymnType.fromH4a(matcher.group(1));
     }
 
