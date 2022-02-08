@@ -33,19 +33,21 @@ public final class Main {
     private static final String HYMNAL_DB_NAME = "hymnaldb";
 
     public static void main(String[] args) throws SQLException, BadHanyuPinyinOutputFormatCombination, IOException {
-        DatabaseClient hymnalDbClient = new DatabaseClient(HYMNAL_DB_NAME, 15);
-        hymnalDbClient.getDb().execSql("PRAGMA user_version = 16");
-        HymnalDbHandler hymnalDbHandler = HymnalDbHandler.create(hymnalDbClient);
-        hymnalDbHandler.handle();
+//        DatabaseClient hymnalDbClient = new DatabaseClient(HYMNAL_DB_NAME, 15);
+//        hymnalDbClient.getDb().execSql("PRAGMA user_version = 16");
+//        HymnalDbHandler hymnalDbHandler = HymnalDbHandler.create(hymnalDbClient);
+//        hymnalDbHandler.handle();
+//
+//        DatabaseClient h4aClient = new DatabaseClient(H4A_DB_NAME, 111);
+//        H4AHandler h4AHandler = H4AHandler.create(h4aClient, hymnalDbHandler.allHymns, hymnalDbHandler.languagesHandler);
+//        h4AHandler.handle();
+//
+//        runTests(hymnalDbClient);
+//
+//        h4aClient.close();
+//        hymnalDbClient.close();
 
-        DatabaseClient h4aClient = new DatabaseClient(H4A_DB_NAME, 111);
-        H4AHandler h4AHandler = H4AHandler.create(h4aClient, hymnalDbHandler.allHymns, hymnalDbHandler.languagesHandler);
-        h4AHandler.handle();
-
-        runTests(hymnalDbClient);
-
-        h4aClient.close();
-        hymnalDbClient.close();
+        SongBaseHandler.handle();
     }
 
     /**
