@@ -1,5 +1,7 @@
 package models;
 
+import com.google.gson.annotations.SerializedName;
+
 import java.util.List;
 
 //    {
@@ -13,8 +15,8 @@ import java.util.List;
 //    }
 public class Verse {
 
-    private String verseType;
-    private List<String> verseContent;
+    @SerializedName(value = "verse_type") private String verseType;
+    @SerializedName(value = "verse_content") private List<String> verseContent;
     private List<String> transliteration;
 
     public Verse() {
