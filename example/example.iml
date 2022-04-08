@@ -10,5 +10,6 @@
     <orderEntry type="module" module-name="sqlite-java-library" />
     <orderEntry type="library" name="com.google.code.gson:gson:2.8.5" level="project" />
     <orderEntry type="library" name="pinyin4j-2.5.0" level="project" />
+    <orderEntry type="library" name="google.auto.value" level="project" />
   </component>
 </module>
